@@ -552,9 +552,9 @@ function RealEstateVideoContent() {
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 max-h-[460px] overflow-y-auto pr-1">
-                    {filteredAvatars.map((avatar) => (
+                    {filteredAvatars.map((avatar, i) => (
                       <Card
-                        key={avatar.avatar_id}
+                        key={`${avatar.avatar_id}-${i}`}
                         onClick={() => {
                           setSelectedAvatarId(avatar.avatar_id);
                           setSelectedAvatarName(avatar.avatar_name);
@@ -1053,7 +1053,11 @@ function RealEstateVideoContent() {
                             });
                             const data = await res.json();
                             if (!res.ok) throw new Error(data.error);
-                            setPhotoLooks((prev) => [...prev, { generation_id: data.generation_id, status: "generating", image_url: null, image_key: null }]);
+                            setPhotoLooks((prev) => {
+                              // Prevent adding double if same generation_id is returned
+                              if (prev.some(l => l.generation_id === data.generation_id)) return prev;
+                              return [...prev, { generation_id: data.generation_id, status: "generating", image_url: null, image_key: null }];
+                            });
                             setPhotoLookPrompt("");
                             toast.info("Look generation started...");
                           } catch (err) {
@@ -1071,7 +1075,7 @@ function RealEstateVideoContent() {
                     {photoLooks.length > 0 && (
                       <div className="grid grid-cols-3 gap-2">
                         {photoLooks.map((look, i) => (
-                          <div key={look.generation_id || i} className="rounded-lg border border-border overflow-hidden aspect-square bg-muted flex items-center justify-center relative">
+                          <div key={look.generation_id || `generating-${i}`} className="rounded-lg border border-border overflow-hidden aspect-square bg-muted flex items-center justify-center relative">
                             {look.status === "generating" ? (
                               <Loader2 className="w-6 h-6 animate-spin text-primary" />
                             ) : look.status === "success" && look.image_url ? (
@@ -1116,7 +1120,7 @@ function RealEstateVideoContent() {
                       {/* Additional looks */}
                       {photoLooks.filter((l) => l.status === "success" && l.image_url).map((look, i) => (
                         <button
-                          key={look.generation_id}
+                          key={`${look.generation_id}-${i}`}
                           onClick={() => {
                             setSelectedLookKey(look.image_key);
                             setSelectedAvatarId(photoAvatarId);
@@ -1151,9 +1155,9 @@ function RealEstateVideoContent() {
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 gap-3 max-h-[400px] overflow-y-auto p-1">
-                        {photoAvatars.map((group) => (
+                        {photoAvatars.map((group, i) => (
                           <button
-                            key={group.group_id}
+                            key={`${group.group_id}-${i}`}
                             onClick={() => {
                               const avatarId = group.avatar_id || group.avatar_list?.[0]?.avatar_id;
                               setSelectedAvatarId(avatarId);

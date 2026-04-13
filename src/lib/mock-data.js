@@ -4,7 +4,7 @@
 
 export const mockUser = {
   id: "mock-user-001",
-  email: "demo@adoraai.com",
+  email: "demo@thumbai.in",
   credits: 10,
   subscription_tier: "free",
   created_at: "2025-01-15T10:30:00Z",
@@ -61,7 +61,7 @@ export const mockVideos = [
   {
     id: "vid-002",
     user_id: "mock-user-001",
-    script: "This changed my morning routine completely. Best protein powder for Indian diet. Use code ADORA20 for 20% off!",
+    script: "This changed my morning routine completely. Best protein powder for Indian diet. Use code THUMB20 for 20% off!",
     avatar_url: "/avatars/placeholder.svg",
     voice_id: "voice-03",
     status: "ready",
@@ -98,7 +98,7 @@ export const mockTestimonials = [
     name: "Ritika Agarwal",
     role: "Skincare Brand Owner",
     avatar: "RA",
-    content: "Adora AI saved me ₹50,000/month on UGC creators. I generate 10 Reels a day now – my engagement is through the roof!",
+    content: "Thumb AI saved me ₹50,000/month on UGC creators. I generate 10 Reels a day now – my engagement is through the roof!",
     rating: 5,
   },
   {
@@ -112,7 +112,7 @@ export const mockTestimonials = [
     name: "Neha Bansal",
     role: "Instagram Influencer",
     avatar: "NB",
-    content: "I create product review videos in 60 seconds flat. My brand deals doubled after using Adora AI.",
+    content: "I create product review videos in 60 seconds flat. My brand deals doubled after using Thumb AI.",
     rating: 5,
   },
   {
@@ -126,7 +126,7 @@ export const mockTestimonials = [
     name: "Priya Krishnan",
     role: "Marketing Manager",
     avatar: "PK",
-    content: "We replaced our entire UGC workflow with Adora AI. 10x faster, 5x cheaper. The ROI is insane.",
+    content: "We replaced our entire UGC workflow with Thumb AI. 10x faster, 5x cheaper. The ROI is insane.",
     rating: 5,
   },
 ];

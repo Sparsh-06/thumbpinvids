@@ -26,6 +26,7 @@ import {
 } from "lucide-react";
 
 const MODELS = [
+  { id: "gemini", name: "Google Veo", tag: "Gemini 3.1" },
   { id: "kling", name: "Kling AI", tag: "Popular" },
   { id: "runway", name: "Runway ML", tag: "Pro" },
   { id: "luma", name: "Luma Dream Machine", tag: "" },

@@ -13,7 +13,7 @@ export function Footer() {
               <div className="w-8 h-8 rounded-lg gradient-bg flex items-center justify-center">
                 <Sparkles className="w-5 h-5 text-white" />
               </div>
-              <span className="text-lg font-bold font-heading gradient-text">Adora AI</span>
+              <span className="text-lg font-bold font-heading gradient-text">Thumb AI</span>
             </Link>
             <p className="text-sm text-muted-foreground leading-relaxed">
               AI-powered UGC video ad generator, built for Indian creators & brands.
@@ -56,7 +56,7 @@ export function Footer() {
         <Separator className="my-8" />
 
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4 text-sm text-muted-foreground">
-          <p>© 2025 Adora AI. Made with ❤️ in India.</p>
+          <p>© 2025 Thumb AI. Made with ❤️ in India.</p>
           <div className="flex gap-6">
             <a href="#" className="hover:text-foreground transition-colors">Twitter</a>
             <a href="#" className="hover:text-foreground transition-colors">Instagram</a>

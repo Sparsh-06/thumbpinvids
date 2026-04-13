@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { GoogleGenAI } from "@google/genai";
 
 /**
  * Text-to-Video Generation API
@@ -146,6 +147,12 @@ const MODEL_CONFIGS = {
       };
     },
   },
+  gemini: {
+    name: "Google Veo",
+    envKey: "GEMINI_API_KEY",
+    // Special handling for Gemini as it uses the SDK
+    isSDK: true, 
+  },
 };
 
 export async function POST(request) {
@@ -185,7 +192,32 @@ export async function POST(request) {
       });
     }
 
-    // Build and send the request to the selected model's API
+    // SPECIAL HANDLING: Google Gemini (Veo)
+    if (config.isSDK && model === "gemini") {
+      console.log("[T2V] Initializing Gemini Veo...");
+      const ai = new GoogleGenAI({ apiKey });
+      
+      const operation = await ai.models.generateVideos({
+        model: "veo-3.1-generate-preview",
+        prompt: prompt.trim(),
+        config: {
+          aspectRatio: settings.aspect_ratio || "16:9",
+          durationSeconds: parseInt(settings.duration) || 5,
+        },
+      });
+
+      console.log("[T2V] Gemini operation started:", operation.name);
+
+      return NextResponse.json({
+        success: true,
+        demo: false,
+        model: config.name,
+        video_id: operation.name,
+        status: "processing",
+      });
+    }
+
+    // Default handling for other models using fetch
     const mapped = config.mapRequest(prompt.trim(), settings, apiKey);
 
     console.log(`[T2V] Sending to ${config.name}...`);
@@ -197,8 +229,7 @@ export async function POST(request) {
     });
 
     const responseData = await response.json();
-    console.log("[T2V] HeyGen response:", JSON.stringify(responseData, null, 2));
-
+    
     if (!response.ok) {
       console.error(`[T2V] ${config.name} error:`, response.status, responseData);
       return NextResponse.json(

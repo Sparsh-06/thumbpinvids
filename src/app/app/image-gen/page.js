@@ -39,7 +39,7 @@ const IMAGE_MODELS = [
   { id: "dall-e", name: "DALL-E 3" },
   { id: "stability", name: "Stability AI" },
   { id: "flux", name: "Flux (fal.ai)" },
-  { id: "gemini", name: "Google Imagen" },
+  { id: "gemini", name: "Gemini 2.5 Flash Image" },
 ];
 
 const VIDEO_MODELS = [
@@ -347,7 +347,7 @@ export default function ImageGenPage() {
                     {/* Download */}
                     <a
                       href={img.url}
-                      download={`adora-gen-${i + 1}.png`}
+                      download={`thumbai-gen-${i + 1}.png`}
                       target="_blank"
                       rel="noopener noreferrer"
                     >

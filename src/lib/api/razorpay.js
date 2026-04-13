@@ -33,7 +33,7 @@ export async function initRazorpayPayment({ orderId, amount, credits, userEmail,
     key: process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID || "rzp_test_placeholder",
     amount: amount * 100,
     currency: "INR",
-    name: "Adora AI",
+    name: "Thumb AI",
     description: `${credits} Video Credits`,
     order_id: orderId,
     prefill: {

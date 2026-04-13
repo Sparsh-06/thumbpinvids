@@ -5,7 +5,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { AuthProvider } from "@/components/auth-provider";
 
 export const metadata = {
-  title: "Adora AI – Generate UGC Video Ads in 60 Seconds",
+  title: "Thumb AI – Generate UGC Video Ads in 60 Seconds",
   description:
     "AI-powered UGC video ad generator for Indian brands & creators. Script to Reel in under 2 minutes with Indian-accent voices, AI avatars, and lip-sync technology.",
   keywords: [
@@ -18,7 +18,7 @@ export const metadata = {
     "video marketing India",
   ],
   openGraph: {
-    title: "Adora AI – Script to Reel in 60s",
+    title: "Thumb AI – Script to Reel in 60s",
     description:
       "Generate viral UGC video ads with AI actors & Indian voices. 10 free credits on signup.",
     type: "website",
@@ -26,7 +26,7 @@ export const metadata = {
   },
   twitter: {
     card: "summary_large_image",
-    title: "Adora AI – AI UGC Video Generator for India",
+    title: "Thumb AI – AI UGC Video Generator for India",
     description:
       "Create professional Reel-style talking-head videos with AI. Made for Indian brands.",
   },

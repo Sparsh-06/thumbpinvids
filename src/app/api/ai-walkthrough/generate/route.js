@@ -22,6 +22,7 @@ export async function POST(request) {
 
   const ai = new GoogleGenAI({ apiKey });
 
+
   try {
     const formData = await request.formData();
 
@@ -41,15 +42,19 @@ export async function POST(request) {
     }
 
     const scriptParts = JSON.parse(scriptPartsRaw);
-    if (!Array.isArray(scriptParts) || scriptParts.length < 2) {
-      return NextResponse.json({ error: "scriptParts must be an array of at least 2 strings" }, { status: 400 });
+    if (!Array.isArray(scriptParts) || scriptParts.length < 1) {
+      return NextResponse.json({ error: "scriptParts must be an array of at least 1 string" }, { status: 400 });
     }
 
     // ── Convert images to base64 ─────────────────────────────────────────────
     async function fileToBase64(file) {
       const arrayBuffer = await file.arrayBuffer();
       const buffer = Buffer.from(arrayBuffer);
-      return { imageBytes: buffer.toString("base64"), mimeType: file.type || "image/jpeg" };
+      // SDK expects { imageBytes, mimeType } based on usinggemini.txt
+      return { 
+        imageBytes: buffer.toString("base64"), 
+        mimeType: file.type || "image/jpeg" 
+      };
     }
 
     const personImgs = await Promise.all(personFiles.slice(0, 2).map(fileToBase64));
@@ -74,6 +79,7 @@ export async function POST(request) {
 
     // ── SSE stream setup ─────────────────────────────────────────────────────
     const encoder = new TextEncoder();
+    const API_BASE = "https://generativelanguage.googleapis.com/v1beta";
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -81,83 +87,91 @@ export async function POST(request) {
           controller.enqueue(encoder.encode(`data: ${JSON.stringify(data)}\n\n`));
         }
 
-        async function pollOperation(operation) {
-          const timeout = Date.now() + 7 * 60 * 1000; // 7 min timeout
-          while (!operation.done) {
+        async function pollOperation(initialOperation) {
+          let currentOp = initialOperation;
+          const timeout = Date.now() + 10 * 60 * 1000; // 10 min timeout
+          
+          while (currentOp && !currentOp.done) {
             if (Date.now() > timeout) throw new Error("Video generation timed out");
-            await new Promise((r) => setTimeout(r, 10000));
-            operation = await ai.operations.getVideosOperation({ operation });
+            
+            await new Promise((r) => setTimeout(r, 10000)); // Poll every 10s
+            
+            // Passing the full operation object is the documented way for the Node SDK
+            const nextOp = await ai.operations.getVideosOperation({ 
+              operation: currentOp 
+            });
+            
+            if (!nextOp) {
+              console.warn("[AI Walkthrough] Poll returned null/undefined, retrying with previous state...");
+              continue;
+            }
+            
+            currentOp = nextOp;
           }
-          return operation;
+          
+          if (!currentOp) throw new Error("Operation lost during polling");
+          
+          if (currentOp.error) {
+            const msg = currentOp.error.message || "";
+            if (msg.includes("internal server issue")) {
+              throw new Error("Gemini encountered a transient internal error. Please try again in 1-2 minutes.");
+            }
+            throw new Error(msg || "Operation failed");
+          }
+          return currentOp.response;
         }
 
         try {
-          let previousVideoObj = null; // holds { videoBytes, mimeType } of last generated video
+          const fullScript = scriptParts.join(" ");
+          send({ 
+            type: "progress", 
+            videoIndex: 0, 
+            status: "generating", 
+            message: "Directing cinematic walkthrough with Veo..." 
+          });
 
-          for (let i = 0; i < scriptParts.length; i++) {
-            const part = scriptParts[i];
-            const isFirst = i === 0;
+          const prompt = buildPrompt(fullScript, true);
+          
+          const generationOp = await ai.models.generateVideos({
+            model: "veo-3.1-generate-preview",
+            prompt,
+            config: {
+              aspectRatio: "9:16",
+              durationSeconds: 8,
+              resolution: "720p",
+              personGeneration: "allow_adult",
+              referenceImages,
+            },
+          });
 
-            send({ type: "progress", videoIndex: i, status: "generating", message: isFirst ? "Generating your walkthrough video..." : `Extending video ${i + 1} of ${scriptParts.length}...` });
-
-            let operation;
-
-            if (isFirst) {
-              // ── First clip: use reference images ────────────────────────────
-              const prompt = buildPrompt(part, true);
-              operation = await ai.models.generateVideos({
-                model: "veo-3.1-generate-preview",
-                prompt,
-                config: {
-                  referenceImages,
-                  aspectRatio: "9:16",
-                  durationSeconds: 8,
-                  personGeneration: "allow_adult",
-                  resolution: "720p",
-                },
-              });
-            } else {
-              // ── Subsequent clips: extend previous video ──────────────────────
-              if (!previousVideoObj) throw new Error("No previous video to extend");
-              const prompt = buildPrompt(part, false);
-              operation = await ai.models.generateVideos({
-                model: "veo-3.1-generate-preview",
-                video: previousVideoObj,
-                prompt,
-                config: {
-                  numberOfVideos: 1,
-                  resolution: "720p",
-                  durationSeconds: 8,
-                  personGeneration: "allow_adult", // Required when using reference images
-                  referenceImages, 
-                },
-              });
-            }
-
-            // Poll until done
-            operation = await pollOperation(operation);
-
-            const generatedVideo = operation.response?.generatedVideos?.[0]?.video;
-            if (!generatedVideo) throw new Error(`Video ${i + 1} generation returned no video`);
-
-            // Store for next extension
-            previousVideoObj = generatedVideo;
-
-            const fileId = generatedVideo.uri.split("/").pop();
-            const videoUrl = `/api/ai-walkthrough/video-proxy?fileId=${fileId}`;
-
-            send({
-              type: "video_ready",
-              videoIndex: i,
-              videoUrl,
-              isLast: i === scriptParts.length - 1,
-            });
+          if (!generationOp) {
+            throw new Error("Failed to start generation operation");
           }
 
-          send({ type: "done", totalVideos: scriptParts.length });
+          // Polling
+          const result = await pollOperation(generationOp);
+
+          const generatedVideo = result.generatedVideos?.[0]?.video;
+          if (!generatedVideo) throw new Error("Video generation returned no video");
+
+          // Extract fileId from uri (usually looks like ".../files/xxx" or ".../files/xxx:download")
+          // We only want the base ID "xxx"
+          const uriParts = generatedVideo.uri.split("/");
+          const fileName = uriParts.pop() || "";
+          const fileId = fileName.split(":")[0].split("?")[0];
+          const videoUrl = `/api/ai-walkthrough/video-proxy?fileId=${fileId}`;
+
+          send({
+            type: "video_ready",
+            videoIndex: 0,
+            videoUrl,
+            isLast: true,
+          });
+
+          send({ type: "done", totalVideos: 1 });
           controller.close();
         } catch (err) {
-          console.error("[AI Walkthrough] Generation error:", err);
+          console.error("[AI Walkthrough] REST Generation error:", err);
           send({ type: "error", message: err.message || "Video generation failed" });
           controller.close();
         }
@@ -178,10 +192,15 @@ export async function POST(request) {
 }
 
 /**
+ * High-quality realism tokens from the master creative SOP.
+ */
+const SKIN_ENHANCER_TOKENS = `Photorealistic detail. Real human skin with visible natural texture, pores, and micro shadows. Preserve natural under-eye detail and realistic lip texture. No airbrushing or waxy finish. Authentic facial structure with natural micro-expressions and eye depth. Lighting behaves naturally with soft highlights and realistic shadows. High-detail editorial realism, grounded in real-world 4k camera capture.`;
+
+/**
  * Build a cinematic Veo prompt from a script part.
  */
 function buildPrompt(scriptPart, isFirst) {
-  const masterBase = `High-end luxury real estate walkthrough video in 9:16 portrait. Cinematic lighting, soft natural sunlight, shallow depth of field, 4k photorealistic detail. The professional agent (as seen in reference) walks through the property with a warm, confident smile, gesturing naturally to the surroundings. They are speaking directly to the camera.`;
+  const masterBase = `High-end luxury real estate walkthrough video in 9:16 portrait. Cinematic lighting, soft natural sunlight, shallow depth of field, 4k photorealistic detail. The professional agent (as seen in reference) walks through the property with a warm, confident smile, gesturing naturally to the surroundings. They are speaking directly to the camera with natural micro-expressions and eye movement. ${SKIN_ENHANCER_TOKENS}`;
 
   if (isFirst) {
     return `${masterBase} The video opens with a smooth tracking shot. The agent looks at the camera and speaks clearly: "${scriptPart}". Everything looks crisp, premium, and inviting. High-quality synchronized audio.`;

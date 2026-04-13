@@ -202,7 +202,7 @@ export default function AIWalkthroughPage() {
 
   // Script
   const [script, setScript] = useState("");
-  const [numParts, setNumParts] = useState(3);
+  const [numParts, setNumParts] = useState(1);
 
   // Generation state
   const [generating, setGenerating] = useState(false);
@@ -480,44 +480,11 @@ export default function AIWalkthroughPage() {
               maxLength={MAX_SCRIPT}
             />
             <p className="text-xs text-muted-foreground">
-              Max {MAX_SCRIPT} characters. This will be split into {numParts} video clips.
+              Max {MAX_SCRIPT} characters. This will be used to generate a single 8-second video clip.
             </p>
           </div>
 
-          {/* Parts selector */}
-          <div className="space-y-2">
-            <span className="text-xs font-medium text-muted-foreground">Number of video clips</span>
-            <div className="flex gap-2">
-              {[3, 4].map((n) => (
-                <button
-                  key={n}
-                  onClick={() => setNumParts(n)}
-                  className={`px-4 py-1.5 rounded-full text-xs font-semibold border transition-all cursor-pointer ${
-                    numParts === n
-                      ? "gradient-bg text-white border-transparent shadow"
-                      : "border-border text-muted-foreground hover:border-primary/40"
-                  }`}
-                >
-                  {n} clips
-                </button>
-              ))}
-            </div>
-          </div>
 
-          {/* Script preview split */}
-          {script.trim().length >= 20 && (
-            <div className="rounded-xl border border-border bg-muted/30 p-3 space-y-2">
-              <p className="text-xs font-semibold text-muted-foreground">Preview — how your script will be split:</p>
-              {splitScript(script, numParts).map((part, i) => (
-                <div key={i} className="flex gap-2">
-                  <span className="text-[10px] font-bold text-primary bg-primary/10 rounded-full w-5 h-5 flex items-center justify-center shrink-0 mt-0.5">
-                    {i + 1}
-                  </span>
-                  <p className="text-xs text-foreground/80 leading-relaxed">{part}</p>
-                </div>
-              ))}
-            </div>
-          )}
 
           <div className="flex justify-between items-center">
             <Button variant="outline" onClick={() => setStep(1)} className="cursor-pointer">
@@ -526,7 +493,7 @@ export default function AIWalkthroughPage() {
             <Button
               onClick={handleGenerate}
               disabled={!step3Valid || generating || script.length > MAX_SCRIPT}
-              className="gradient-bg text-white shadow-md cursor-pointer"
+              className="gradient-bg text-white shadow-md cursor-pointer px-8"
             >
               {generating ? (
                 <>
@@ -536,7 +503,7 @@ export default function AIWalkthroughPage() {
               ) : (
                 <>
                   <Sparkles className="w-4 h-4 mr-2" />
-                  Generate Videos
+                  Generate Walkthrough
                 </>
               )}
             </Button>
@@ -549,7 +516,7 @@ export default function AIWalkthroughPage() {
         <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
           <div className="flex items-center justify-between">
             <h2 className="text-base font-semibold">
-              {done ? `✅ ${videoStatuses.length} videos ready` : "Generating your walkthrough..."}
+              {done ? "✅ Your video is ready" : "Generating your walkthrough..."}
             </h2>
             {done && (
               <Button variant="outline" size="sm" onClick={reset} className="cursor-pointer text-xs">
@@ -572,9 +539,9 @@ export default function AIWalkthroughPage() {
 
           {done && (
             <div className="rounded-xl border border-primary/20 bg-primary/5 p-4 text-center">
-              <p className="text-sm font-medium">🎬 All videos generated!</p>
+              <p className="text-sm font-medium">🎬 Video generated successfully!</p>
               <p className="text-xs text-muted-foreground mt-1">
-                Download each clip above. Video joining (to create one seamless video) is coming soon.
+                You can download your cinematic 8-second clip above.
               </p>
             </div>
           )}

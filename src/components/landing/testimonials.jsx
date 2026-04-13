@@ -23,7 +23,7 @@ export function Testimonials() {
             <span className="gradient-text">Indian Creators</span>
           </h2>
           <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Thousands of brands and creators across India trust Adora AI for their UGC video production.
+            Thousands of brands and creators across India trust Thumb AI for their UGC video production.
           </p>
         </div>
 

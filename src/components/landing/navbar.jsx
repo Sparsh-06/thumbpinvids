@@ -19,7 +19,7 @@ export function Navbar() {
               <Sparkles className="w-5 h-5 text-white" />
             </div>
             <span className="text-xl font-bold font-heading gradient-text">
-              Adora AI
+              Thumb AI
             </span>
           </Link>
 

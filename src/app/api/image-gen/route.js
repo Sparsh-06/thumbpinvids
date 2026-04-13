@@ -78,11 +78,9 @@ const MODEL_CONFIGS = {
     }),
   },
   gemini: {
-    name: "Google Imagen",
-    envKey: "GEMINI_API_KEY",
-    maxVariants: 4,
+    name: "Gemini 2.5 Flash Image",
     mapRequest: (prompt, settings, apiKey) => ({
-      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash-exp:generateContent?key=${apiKey}`,
+      url: `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash-image:generateContent?key=${apiKey}`,
       headers: { "Content-Type": "application/json" },
       body: {
         contents: [
@@ -93,13 +91,20 @@ const MODEL_CONFIGS = {
           },
         ],
         generationConfig: {
-          responseModalities: ["TEXT"],
+          responseModalities: ["IMAGE"],
         },
       },
       parseResponse: (data) => {
-        // Gemini does not currently generate images directly via this endpoint
-        // Return empty to trigger demo mode gracefully
-        return [];
+        const parts = data?.candidates?.[0]?.content?.parts || [];
+        const images = [];
+        for (const part of parts) {
+          if (part.inlineData) {
+            images.push({
+              url: `data:${part.inlineData.mimeType};base64,${part.inlineData.data}`,
+            });
+          }
+        }
+        return images;
       },
     }),
   },

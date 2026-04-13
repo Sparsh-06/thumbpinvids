@@ -1,34 +1,24 @@
 import { NextResponse } from "next/server";
+import { GoogleGenAI } from "@google/genai";
 
 const MODEL_CONFIGS = {
   heygen: {
     envKey: "HEYGEN_API_KEY",
     getStatus: async (videoId, apiKey) => {
+      // ... existing code ...
       console.log(`[Status Check] Fetching Heygen status for video ${videoId}...`);
       
       let res = await fetch(`https://api.heygen.com/v2/video/status?video_id=${videoId}`, {
         headers: { "X-Api-Key": apiKey },
       });
 
-      // If V2 returns 404, try V1 fallback
       if (res.status === 404) {
-        console.warn(`[Status Check] V2 404 for ${videoId}, trying V1 fallback...`);
         res = await fetch(`https://api.heygen.com/v1/video_status.get?video_id=${videoId}`, {
           headers: { "X-Api-Key": apiKey },
         });
       }
       
-      const contentType = res.headers.get("content-type");
-      if (!contentType || !contentType.includes("application/json")) {
-        const text = await res.text();
-        console.error(`[Status Check] Expected JSON but got ${contentType}:`, text.substring(0, 500));
-        throw new Error(`Unexpected response format from Heygen: ${res.status} ${res.statusText}`);
-      }
-
       const data = await res.json();
-      console.log(`[Status Check] Heygen response for ${videoId}:`, data.data?.status || data.status);
-      
-      // Handle both V1 and V2 response structures
       const status = data.data?.status || (data.status === "success" ? "completed" : data.status) || "processing";
       const video_url = data.data?.video_url || data.video_url || null;
       const thumbnail_url = data.data?.thumbnail_url || data.thumbnail_url || null;
@@ -37,7 +27,34 @@ const MODEL_CONFIGS = {
       return { status, video_url, thumbnail_url, error };
     },
   },
-  // Add other models if needed
+  gemini: {
+    envKey: "GEMINI_API_KEY",
+    getStatus: async (videoId, apiKey) => {
+      const ai = new GoogleGenAI({ apiKey });
+      const operation = await ai.operations.getVideosOperation({ name: videoId });
+      
+      const status = operation.done ? "completed" : "processing";
+      let video_url = null;
+      let thumbnail_url = null;
+      let error = null;
+
+      if (operation.done) {
+        if (operation.error) {
+          error = operation.error.message;
+          status = "failed";
+        } else {
+          const generatedVideo = operation.response?.generatedVideos?.[0]?.video;
+          if (generatedVideo) {
+            const fileId = generatedVideo.uri.split("/").pop();
+            // Using the same walkthrough proxy for consistency
+            video_url = `/api/ai-walkthrough/video-proxy?fileId=${fileId}`;
+          }
+        }
+      }
+
+      return { status, video_url, thumbnail_url, error };
+    },
+  },
 };
 
 export async function GET(request) {
