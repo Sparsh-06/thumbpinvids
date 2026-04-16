@@ -1,4 +1,8 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import Video from "@/models/Video";
+import dbConnect from "@/lib/db";
 
 /**
  * POST /api/real-estate-video/generate
@@ -21,6 +25,11 @@ export async function POST(request) {
   }
 
   try {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const body = await request.json();
     const { avatar_id, bg_asset_id, script, voice_id, aspect_ratio = "16:9" } = body;
 
@@ -91,6 +100,22 @@ export async function POST(request) {
 
     const video_id = data.data?.video_id || data.video_id;
     console.log("[RE Generate] Success. video_id:", video_id);
+
+    // Save to MongoDB
+    await dbConnect();
+    await Video.create({
+      userId: session.user.id,
+      script: script.trim(),
+      avatarUrl: avatar_id, // Store avatar_id as a reference
+      voiceId: voice_id,
+      status: "generating",
+      video_id: video_id, // We need to add this to the model or use metadata
+      metadata: {
+        bg_asset_id,
+        aspect_ratio,
+        source: "heygen"
+      }
+    });
 
     return NextResponse.json({
       success: true,

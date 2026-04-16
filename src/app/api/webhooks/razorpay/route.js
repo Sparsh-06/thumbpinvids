@@ -1,5 +1,7 @@
 import { NextResponse } from "next/server";
 import crypto from "crypto";
+import dbConnect from "@/lib/mongodb";
+import User from "@/models/User";
 
 export async function POST(request) {
   try {
@@ -27,6 +29,8 @@ export async function POST(request) {
     const event = JSON.parse(body);
     const eventType = event.event;
 
+    await dbConnect();
+
     switch (eventType) {
       case "payment.captured": {
         // Payment successful – add credits to user
@@ -36,9 +40,12 @@ export async function POST(request) {
 
         console.log(`Payment captured: ${payment.id} for user ${userId}, ${credits} credits`);
 
-        // In production: Update user credits in Supabase
-        // const supabase = createAdminClient();
-        // await supabase.rpc('add_credits', { p_user_id: userId, p_credits: credits });
+        if (userId && credits > 0) {
+          await User.findByIdAndUpdate(userId, {
+            $inc: { credits: credits }
+          });
+          console.log(`Successfully added ${credits} credits to user ${userId}`);
+        }
 
         break;
       }
@@ -50,20 +57,13 @@ export async function POST(request) {
 
         console.log(`Subscription activated: ${subscription.id} for user ${userId}`);
 
-        // In production: Update user tier to 'pro' and add 500 credits
-        // const supabase = createAdminClient();
-        // await supabase.from('users').update({ subscription_tier: 'pro', credits: 500 }).eq('id', userId);
+        if (userId) {
+          await User.findByIdAndUpdate(userId, {
+            role: "admin", // Or "pro" if we add a pro role
+            $inc: { credits: 500 }
+          });
+        }
 
-        break;
-      }
-
-      case "subscription.cancelled": {
-        const subscription = event.payload.subscription.entity;
-        const userId = subscription.notes?.user_id;
-
-        console.log(`Subscription cancelled: ${subscription.id} for user ${userId}`);
-
-        // In production: Downgrade user to 'free'
         break;
       }
 

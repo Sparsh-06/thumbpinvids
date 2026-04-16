@@ -1,47 +1,54 @@
 "use client";
 
+import { useSession } from "next-auth/react";
 import { useEffect, useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { mockUser } from "@/lib/mock-data";
 
+/**
+ * Hook to get the current authenticated user and their profile details.
+ * Replaces Supabase auth with NextAuth.
+ */
 export function useUser() {
-  const [user, setUser] = useState(null);
+  const { data: session, status } = useSession();
   const [profile, setProfile] = useState(null);
-  const [loading, setLoading] = useState(true);
+  const [loadingProfile, setLoadingProfile] = useState(true);
 
   useEffect(() => {
-    async function getUser() {
-      try {
-        const supabase = createClient();
-        const { data: { user: authUser } } = await supabase.auth.getUser();
-
-        if (authUser) {
-          setUser(authUser);
-
-          // Fetch user profile with credits
-          const { data: profileData } = await supabase
-            .from("users")
-            .select("*")
-            .eq("id", authUser.id)
-            .single();
-
-          setProfile(profileData || { ...mockUser, id: authUser.id, email: authUser.email });
-        } else {
-          // Fallback to mock in development
-          setUser({ id: mockUser.id, email: mockUser.email });
-          setProfile(mockUser);
+    async function fetchProfile() {
+      if (status === "authenticated" && session?.user?.id) {
+        try {
+          const res = await fetch("/api/user/profile");
+          if (res.ok) {
+            const data = await res.json();
+            setProfile(data.user);
+          } else {
+            // Fallback to session user and mock credits
+            setProfile({
+              ...session.user,
+              credits: 100 // Default for now
+            });
+          }
+        } catch (error) {
+          console.error("[useUser] Error fetching profile:", error);
+        } finally {
+          setLoadingProfile(false);
         }
-      } catch {
-        // Use mock data when Supabase is not configured
-        setUser({ id: mockUser.id, email: mockUser.email });
-        setProfile(mockUser);
-      } finally {
-        setLoading(false);
+      } else if (status === "unauthenticated") {
+        setProfile(null);
+        setLoadingProfile(false);
       }
     }
 
-    getUser();
-  }, []);
+    fetchProfile();
+  }, [session, status]);
 
-  return { user, profile, loading, credits: profile?.credits ?? 0 };
+  const isLoading = status === "loading" || loadingProfile;
+
+  return {
+    user: session?.user || null,
+    profile,
+    loading: isLoading,
+    credits: profile?.credits ?? 0,
+    status
+  };
 }

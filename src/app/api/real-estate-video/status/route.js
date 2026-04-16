@@ -1,4 +1,9 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import Video from "@/models/Video";
+import Asset from "@/models/Asset";
+import dbConnect from "@/lib/db";
 
 /**
  * GET /api/real-estate-video/status?video_id=...
@@ -36,6 +41,52 @@ export async function GET(request) {
     }
 
     const info = data.data || data;
+    const isCompleted = info.status === "completed";
+
+    // Update DB if completed
+    try {
+      if (isCompleted && info.video_url) {
+        const session = await getServerSession(authOptions);
+        if (session) {
+          await dbConnect();
+          
+          // Update Video record
+          const videoRecord = await Video.findOneAndUpdate(
+            { video_id: video_id },
+            { 
+              status: "completed", 
+              videoUrl: info.video_url,
+              thumbnailUrl: info.thumbnail_url 
+            },
+            { new: true }
+          );
+
+          // Create Asset record if it doesn't exist
+          const existingAsset = await Asset.findOne({ 
+            userId: session.user.id,
+            "metadata.video_id": video_id 
+          });
+
+          if (!existingAsset && videoRecord) {
+            await Asset.create({
+              userId: session.user.id,
+              name: `Generated Video - ${new Date().toLocaleDateString()}`,
+              url: info.video_url,
+              type: "video",
+              metadata: {
+                video_id: video_id,
+                thumbnail_url: info.thumbnail_url,
+                source: "heygen",
+                aspect_ratio: videoRecord.metadata?.get("aspect_ratio")
+              }
+            });
+            console.log("[RE Status] Created asset for video:", video_id);
+          }
+        }
+      }
+    } catch (dbErr) {
+      console.error("[RE Status] DB Update error:", dbErr);
+    }
 
     return NextResponse.json({
       video_id,

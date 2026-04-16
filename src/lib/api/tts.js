@@ -1,18 +1,20 @@
 // ElevenLabs TTS API – Production Implementation
 // Generates speech audio from text using Indian-English voices
+import fs from "fs/promises";
+import path from "path";
 
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 2000;
 
 /**
- * Generate TTS audio using ElevenLabs API
+ * Generate TTS audio using ElevenLabs API and save to local storage
  * @param {string} text - The script text to convert to speech
  * @param {string} voiceId - ElevenLabs voice ID
- * @param {object} supabaseAdmin - Supabase admin client for storage upload
+ * @param {object} _unused - Previously supabaseAdmin
  * @param {string} videoId - Video ID for naming the audio file
  * @returns {Promise<{success: boolean, audio_url: string, duration_seconds: number}>}
  */
-export async function generateTTS(text, voiceId, supabaseAdmin, videoId) {
+export async function generateTTS(text, voiceId, _unused, videoId) {
   const apiKey = process.env.ELEVENLABS_API_KEY;
 
   if (!apiKey) {
@@ -54,51 +56,26 @@ export async function generateTTS(text, voiceId, supabaseAdmin, videoId) {
 
       if (!response.ok) {
         const errorBody = await response.text().catch(() => "");
-        
-        if (response.status === 401) {
-          throw new Error("ElevenLabs API key is invalid. Please check your ELEVENLABS_API_KEY.");
-        }
-        if (response.status === 422) {
-          throw new Error(`Invalid voice ID "${voiceId}". Please update the voice ID in your database.`);
-        }
-        if (response.status === 429) {
-          throw new Error("ElevenLabs rate limit or quota exceeded. Please wait or upgrade your plan.");
-        }
-        
         throw new Error(`ElevenLabs API error ${response.status}: ${errorBody}`);
       }
 
-      // Get audio as buffer
       const audioBuffer = Buffer.from(await response.arrayBuffer());
 
       if (audioBuffer.length === 0) {
         throw new Error("ElevenLabs returned empty audio");
       }
 
-      console.log(`[TTS] Audio generated: ${audioBuffer.length} bytes`);
+      // ── Save to Local Storage ─────────────────────────────────────────────
+      const uploadDir = path.join(process.cwd(), "public", "uploads", "audio");
+      await fs.mkdir(uploadDir, { recursive: true });
+      
+      const fileName = `${videoId}.mp3`;
+      const filePath = path.join(uploadDir, fileName);
+      await fs.writeFile(filePath, audioBuffer);
 
-      // Upload to Supabase Storage
-      const fileName = `audio/${videoId}.mp3`;
-      const { error: uploadError } = await supabaseAdmin.storage
-        .from("videos")
-        .upload(fileName, audioBuffer, {
-          contentType: "audio/mpeg",
-          upsert: true,
-        });
+      const audioUrl = `/uploads/audio/${fileName}`;
+      console.log(`[TTS] Audio saved locally: ${audioUrl}`);
 
-      if (uploadError) {
-        throw new Error(`Storage upload failed: ${uploadError.message}`);
-      }
-
-      // Get public URL
-      const { data: urlData } = supabaseAdmin.storage
-        .from("videos")
-        .getPublicUrl(fileName);
-
-      const audioUrl = urlData.publicUrl;
-      console.log(`[TTS] Audio uploaded: ${audioUrl}`);
-
-      // Estimate duration (roughly 2.5 words per second for Indian English)
       const wordCount = text.split(/\s+/).length;
       const durationSeconds = Math.ceil(wordCount / 2.5);
 
@@ -110,15 +87,7 @@ export async function generateTTS(text, voiceId, supabaseAdmin, videoId) {
     } catch (error) {
       lastError = error;
       console.error(`[TTS] Attempt ${attempt + 1} failed:`, error.message);
-
-      // Don't retry on auth/validation errors
-      if (
-        error.message.includes("invalid") ||
-        error.message.includes("quota") ||
-        error.message.includes("API key")
-      ) {
-        break;
-      }
+      if (error.message.includes("invalid") || error.message.includes("quota")) break;
     }
   }
 

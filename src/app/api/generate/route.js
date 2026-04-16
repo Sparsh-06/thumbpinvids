@@ -1,11 +1,13 @@
 import { NextResponse } from "next/server";
-import { createAdminClient } from "@/lib/supabase/admin";
-import { createClient } from "@/lib/supabase/server";
+import dbConnect from "@/lib/mongodb";
+import Video from "@/models/Video";
+import User from "@/models/User";
+import { getServerSession } from "next-auth/next";
+import { authOptions } from "@/lib/auth-config";
 import { generateTTS } from "@/lib/api/tts";
 import { generateLipSync } from "@/lib/api/lipsync";
 
 export async function POST(request) {
-  let supabaseAdmin;
   let videoId = null;
   let userId = null;
   let creditsDeducted = false;
@@ -29,82 +31,46 @@ export async function POST(request) {
       );
     }
 
-    if (script.length > 500) {
-      return NextResponse.json(
-        { error: "Script must not exceed 500 characters" },
-        { status: 400 }
-      );
-    }
-
     // ── 2. Authenticate User ───────────────────────────────
-    const supabaseAuth = await createClient();
-    const {
-      data: { user },
-      error: authError,
-    } = await supabaseAuth.auth.getUser();
-
-    if (authError || !user) {
+    const session = await getServerSession(authOptions);
+    if (!session || !session.user) {
       return NextResponse.json(
         { error: "Authentication required. Please log in." },
         { status: 401 }
       );
     }
 
-    userId = user.id;
-    supabaseAdmin = createAdminClient();
+    userId = session.user.id;
+    await dbConnect();
 
-    // ── 3. Check & Deduct Credits (Atomic) ─────────────────
-    const { data: hasCredits, error: creditError } = await supabaseAdmin.rpc(
-      "deduct_credits",
-      { p_user_id: userId, p_amount: 2 }
-    );
-
-    if (creditError) {
-      console.error("[Generate] Credit deduction RPC error:", creditError);
-      return NextResponse.json(
-        { error: "Failed to check credits. Please try again." },
-        { status: 500 }
-      );
-    }
-
-    if (!hasCredits) {
+    // ── 3. Check & Deduct Credits ──────────────────────────
+    const user = await User.findById(userId);
+    if (!user || user.credits < 2) {
       return NextResponse.json(
         { error: "Not enough credits. You need 2 credits to generate a video." },
         { status: 402 }
       );
     }
 
+    user.credits -= 2;
+    await user.save();
     creditsDeducted = true;
 
     // ── 4. Insert Video Row (status: queued) ───────────────
-    const { data: videoRow, error: insertError } = await supabaseAdmin
-      .from("videos")
-      .insert({
-        user_id: userId,
-        script: script.trim(),
-        avatar_url,
-        voice_id,
-        music_enabled: music_enabled ?? true,
-        status: "queued",
-      })
-      .select("id")
-      .single();
+    const video = await Video.create({
+      userId,
+      script: script.trim(),
+      avatarUrl: avatar_url,
+      voiceId,
+      musicEnabled: music_enabled ?? true,
+      status: "queued",
+    });
 
-    if (insertError || !videoRow) {
-      console.error("[Generate] Insert video error:", insertError);
-      // Refund credits
-      await refundCredits(supabaseAdmin, userId, 2);
-      return NextResponse.json(
-        { error: "Failed to create video record. Credits refunded." },
-        { status: 500 }
-      );
-    }
-
-    videoId = videoRow.id;
+    videoId = video._id;
     console.log(`[Generate] Video ${videoId} created for user ${userId}`);
 
     // ── 5. Return immediately, then run pipeline async ─────
-    runPipelineAsync(supabaseAdmin, videoId, userId, script.trim(), avatar_url, voice_id, {
+    runPipelineAsync(videoId, userId, script.trim(), avatar_url, voice_id, {
       expression: expression || "friendly",
       gesture_intensity: gesture_intensity || "natural",
       head_motion: head_motion || "natural",
@@ -119,8 +85,12 @@ export async function POST(request) {
   } catch (error) {
     console.error("[Generate] Unexpected error:", error);
 
-    if (creditsDeducted && supabaseAdmin && userId) {
-      await refundCredits(supabaseAdmin, userId, 2);
+    if (creditsDeducted && userId) {
+      const user = await User.findById(userId);
+      if (user) {
+        user.credits += 2;
+        await user.save();
+      }
     }
 
     return NextResponse.json(
@@ -130,89 +100,52 @@ export async function POST(request) {
   }
 }
 
-// ── Async Pipeline (runs after response is sent) ─────────────
-async function runPipelineAsync(supabaseAdmin, videoId, userId, script, avatarUrl, voiceId, gestureConfig = {}) {
+// ── Async Pipeline ───────────────────────────────────────────
+async function runPipelineAsync(videoId, userId, script, avatarUrl, voiceId, gestureConfig = {}) {
   try {
-    // Step A: Update status → generating
-    await updateVideoStatus(supabaseAdmin, videoId, "generating");
+    await Video.findByIdAndUpdate(videoId, { status: "generating" });
 
-    // Step B: ElevenLabs TTS (text → audio)
+    // Step B: TTS
     console.log(`[Pipeline] Step 1/2: Generating TTS audio...`);
-    const ttsResult = await generateTTS(script, voiceId, supabaseAdmin, videoId);
+    const ttsResult = await generateTTS(script, voiceId, null, videoId);
 
     if (!ttsResult.success || !ttsResult.audio_url) {
-      throw new Error("TTS generation failed: no audio URL returned");
+      throw new Error("TTS generation failed");
     }
 
-    console.log(`[Pipeline] TTS complete: ${ttsResult.audio_url}`);
-
-    // Step C: D-ID Lip-Sync (avatar image + audio → video)
+    // Step C: Lip-Sync
     console.log(`[Pipeline] Step 2/2: Generating lip-sync video...`);
     const lipSyncResult = await generateLipSync(
       avatarUrl,
       ttsResult.audio_url,
-      supabaseAdmin,
+      null, // No Supabase admin needed anymore
       videoId,
       gestureConfig
     );
 
     if (!lipSyncResult.success || !lipSyncResult.video_url) {
-      throw new Error("Lip-sync generation failed: no video URL returned");
+      throw new Error("Lip-sync generation failed");
     }
-
-    console.log(`[Pipeline] Lip-sync complete: ${lipSyncResult.video_url}`);
 
     // Step D: Update video row → ready
-    const { error: updateError } = await supabaseAdmin
-      .from("videos")
-      .update({
-        status: "ready",
-        video_url: lipSyncResult.video_url,
-      })
-      .eq("id", videoId);
-
-    if (updateError) {
-      console.error(`[Pipeline] Failed to update video to ready:`, updateError);
-      throw new Error("Failed to save video URL");
-    }
+    await Video.findByIdAndUpdate(videoId, {
+      status: "ready",
+      videoUrl: lipSyncResult.video_url,
+    });
 
     console.log(`[Pipeline] ✅ Video ${videoId} is READY!`);
   } catch (error) {
     console.error(`[Pipeline] ❌ Video ${videoId} failed:`, error.message);
 
-    await supabaseAdmin
-      .from("videos")
-      .update({
-        status: "error",
-        error_message: error.message,
-      })
-      .eq("id", videoId);
-
-    await refundCredits(supabaseAdmin, userId, 2);
-    console.log(`[Pipeline] Credits refunded for user ${userId}`);
-  }
-}
-
-// ── Helpers ──────────────────────────────────────────────────
-
-async function updateVideoStatus(supabaseAdmin, videoId, status) {
-  const { error } = await supabaseAdmin
-    .from("videos")
-    .update({ status })
-    .eq("id", videoId);
-
-  if (error) {
-    console.error(`[Pipeline] Failed to update status to ${status}:`, error);
-  }
-}
-
-async function refundCredits(supabaseAdmin, userId, amount) {
-  try {
-    await supabaseAdmin.rpc("add_credits", {
-      p_user_id: userId,
-      p_amount: amount,
+    await Video.findByIdAndUpdate(videoId, {
+      status: "error",
+      errorMessage: error.message,
     });
-  } catch (error) {
-    console.error("[Pipeline] CRITICAL: Failed to refund credits:", error);
+
+    const user = await User.findById(userId);
+    if (user) {
+      user.credits += 2;
+      await user.save();
+    }
   }
 }

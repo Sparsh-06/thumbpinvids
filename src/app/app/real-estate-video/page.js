@@ -39,6 +39,7 @@ import {
   Camera,
   RefreshCw,
 } from "lucide-react";
+import { AssetSelector } from "@/components/dashboard/asset-selector";
 
 const STEPS = ["Avatar", "Property", "Script & Voice", "Generate"];
 
@@ -344,10 +345,23 @@ function RealEstateVideoContent() {
     }
   }
 
-  async function handleBgUpload(e) {
+  async function handleBgFileChange(e) {
     const file = e.target.files?.[0];
-    if (!file) return;
+    if (file) uploadBackground(file);
+  }
 
+  async function handleAssetSelect(asset) {
+    try {
+      const response = await fetch(asset.url);
+      const blob = await response.blob();
+      const file = new File([blob], asset.name, { type: blob.type });
+      uploadBackground(file);
+    } catch (error) {
+      toast.error("Failed to load asset from library");
+    }
+  }
+
+  async function uploadBackground(file) {
     const allowed = ["image/jpeg", "image/png", "image/webp"];
     if (!allowed.includes(file.type)) {
       toast.error("Please upload a JPEG, PNG, or WebP image");
@@ -1221,20 +1235,28 @@ function RealEstateVideoContent() {
             type="file"
             accept="image/jpeg,image/png,image/webp"
             className="hidden"
-            onChange={handleBgUpload}
+            onChange={handleBgFileChange}
           />
 
           {!bgPreview ? (
-            <button
-              onClick={() => bgFileRef.current?.click()}
-              className="w-full border-2 border-dashed border-border hover:border-primary/50 rounded-xl p-12 flex flex-col items-center justify-center gap-3 text-muted-foreground hover:text-foreground transition-colors group"
-            >
-              <ImagePlus className="w-12 h-12 group-hover:text-primary transition-colors" />
-              <div className="text-center">
-                <p className="font-medium text-sm">Upload property photo</p>
-                <p className="text-xs text-muted-foreground mt-1">JPEG, PNG, WebP • Max 5MB</p>
-              </div>
-            </button>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <button
+                onClick={() => bgFileRef.current?.click()}
+                className="border-2 border-dashed border-border hover:border-primary/50 rounded-xl p-12 flex flex-col items-center justify-center gap-3 text-muted-foreground hover:text-foreground transition-colors group bg-muted/10 cursor-pointer"
+              >
+                <Upload className="w-10 h-10 group-hover:text-primary transition-colors" />
+                <div className="text-center">
+                  <p className="font-semibold text-sm">Upload photo</p>
+                  <p className="text-[11px] text-muted-foreground mt-1">JPEG, PNG, WebP</p>
+                </div>
+              </button>
+
+              <AssetSelector 
+                type="products"
+                title="Select Background"
+                onSelect={handleAssetSelect}
+              />
+            </div>
           ) : (
             <div className="space-y-3">
               <div className="relative rounded-xl overflow-hidden border border-border aspect-video bg-black">

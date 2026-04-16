@@ -19,6 +19,7 @@ import {
   Info,
   Download,
 } from "lucide-react";
+import { AssetSelector } from "@/components/dashboard/asset-selector";
 
 const MAX_SCRIPT = 450;
 
@@ -92,7 +93,7 @@ function splitScript(script, parts = 3) {
   return result;
 }
 
-function ImageUploadBox({ label, icon: Icon, images, onAdd, onRemove, maxImages, hint }) {
+function ImageUploadBox({ label, icon: Icon, images, onAdd, onRemove, maxImages, hint, type = "all" }) {
   const inputRef = useRef(null);
 
   function handleFiles(files) {
@@ -102,13 +103,19 @@ function ImageUploadBox({ label, icon: Icon, images, onAdd, onRemove, maxImages,
     if (!valid.length) toast.error("Please upload image files (JPEG, PNG, WebP)");
   }
 
-  function handleDrop(e) {
-    e.preventDefault();
-    handleFiles(e.dataTransfer.files);
+  async function handleAssetSelect(asset) {
+    try {
+      const response = await fetch(asset.url);
+      const blob = await response.blob();
+      const file = new File([blob], asset.name, { type: blob.type });
+      onAdd(file);
+    } catch (error) {
+      toast.error("Failed to load asset from library");
+    }
   }
 
   return (
-    <div className="space-y-2">
+    <div className="space-y-4">
       <div className="flex items-center gap-2">
         <Icon className="w-4 h-4 text-primary" />
         <span className="text-sm font-semibold">{label}</span>
@@ -116,11 +123,31 @@ function ImageUploadBox({ label, icon: Icon, images, onAdd, onRemove, maxImages,
       </div>
       {hint && <p className="text-xs text-muted-foreground">{hint}</p>}
 
+      {images.length < maxImages && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <button
+            type="button"
+            onClick={() => inputRef.current?.click()}
+            onDragOver={(e) => e.preventDefault()}
+            className="border-2 border-dashed border-border hover:border-primary/60 rounded-xl p-6 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
+          >
+            <Upload className="w-5 h-5 group-hover:text-primary transition-colors" />
+            <p className="text-xs font-medium">Click to upload</p>
+          </button>
+          
+          <AssetSelector 
+            type={type} 
+            title={`Select ${label}`}
+            onSelect={handleAssetSelect}
+          />
+        </div>
+      )}
+
       {/* Preview grid */}
       {images.length > 0 && (
-        <div className="flex gap-2 flex-wrap">
+        <div className="flex gap-3 flex-wrap pt-2">
           {images.map((img, i) => (
-            <div key={i} className="relative w-24 h-24 rounded-xl overflow-hidden border border-border shadow-sm group">
+            <div key={i} className="relative w-28 h-28 rounded-xl overflow-hidden border border-border shadow-md group animate-in zoom-in-50 duration-200">
               <img
                 src={URL.createObjectURL(img)}
                 alt={`${label} ${i + 1}`}
@@ -128,28 +155,15 @@ function ImageUploadBox({ label, icon: Icon, images, onAdd, onRemove, maxImages,
               />
               <button
                 onClick={() => onRemove(i)}
-                className="absolute top-1 right-1 w-5 h-5 rounded-full bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+                className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all hover:bg-destructive"
               >
-                <X className="w-3 h-3 text-white" />
+                <X className="w-4 h-4 text-white" />
               </button>
             </div>
           ))}
         </div>
       )}
 
-      {images.length < maxImages && (
-        <button
-          type="button"
-          onClick={() => inputRef.current?.click()}
-          onDrop={handleDrop}
-          onDragOver={(e) => e.preventDefault()}
-          className="w-full border-2 border-dashed border-border hover:border-primary/60 rounded-xl p-5 flex flex-col items-center justify-center gap-2 text-muted-foreground hover:text-foreground transition-colors group cursor-pointer"
-        >
-          <ImagePlus className="w-7 h-7 group-hover:text-primary transition-colors" />
-          <p className="text-xs font-medium">Click or drag to upload</p>
-          <p className="text-[11px]">JPEG, PNG, WebP • max {maxImages} image{maxImages > 1 ? "s" : ""}</p>
-        </button>
-      )}
       <input
         ref={inputRef}
         type="file"
@@ -461,6 +475,7 @@ export default function AIWalkthroughPage() {
             onAdd={addPersonImage}
             onRemove={removePersonImage}
             maxImages={2}
+            type="avatars"
             hint="Upload 1–2 photos of the person (full body or half body). These will guide Veo on what the person looks like."
           />
 
@@ -487,6 +502,7 @@ export default function AIWalkthroughPage() {
             onAdd={addLocationImage}
             onRemove={removeLocationImage}
             maxImages={maxLocationImages}
+            type="products"
             hint={`Upload 1–${maxLocationImages} photo(s) of the space or surroundings. These set the background/environment of the video.`}
           />
 

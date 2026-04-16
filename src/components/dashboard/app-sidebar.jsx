@@ -17,6 +17,8 @@ import {
   Clapperboard,
   Building2,
   PersonStanding,
+  PenTool,
+  ShoppingBag,
 } from "lucide-react";
 import {
   Sidebar,
@@ -39,11 +41,13 @@ const mainNav = [
   { title: "Text to Video", href: "/app/text-to-video", icon: Video },
   { title: "Real Estate Video", href: "/app/real-estate-video", icon: Building2 },
   { title: "AI Walkthrough", href: "/app/ai-walkthrough", icon: PersonStanding },
+  { title: "UGC Script", href: "/app/ugc-creator", icon: PenTool },
+  { title: "Product Video", href: "/app/product-to-video", icon: ShoppingBag },
   { title: "Image Gen", href: "/app/image-gen", icon: ImageIcon },
 ];
 
 const libraryNav = [
-  { title: "Avatar Library", href: "/app/avatars", icon: Users },
+  { title: "Asset Library", href: "/app/assets", icon: Users },
   { title: "Video History", href: "/app/history", icon: Clock },
   { title: "Credits", href: "/app/credits", icon: CreditCard },
   { title: "Profile", href: "/app/profile", icon: User },

@@ -1,5 +1,10 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import Video from "@/models/Video";
+import Asset from "@/models/Asset";
+import dbConnect from "@/lib/db";
 
 /**
  * POST /api/ai-walkthrough/generate
@@ -24,12 +29,18 @@ export async function POST(request) {
 
 
   try {
+    const session = await getServerSession(authOptions);
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
     const formData = await request.formData();
 
     // ── Parse person images ──────────────────────────────────────────────────
     const personFiles = formData.getAll("personImages");
     const locationFiles = formData.getAll("locationImages");
     const scriptPartsRaw = formData.get("scriptParts");
+    const context = formData.get("context") || "real-estate"; // Default to real-estate
 
     if (!scriptPartsRaw) {
       return NextResponse.json({ error: "scriptParts is required" }, { status: 400 });
@@ -130,7 +141,7 @@ export async function POST(request) {
             message: "Directing cinematic walkthrough with Veo..." 
           });
 
-          const prompt = buildPrompt(fullScript, true);
+          const prompt = buildPrompt(fullScript, true, context);
           
           const generationOp = await ai.models.generateVideos({
             model: "veo-3.1-generate-preview",
@@ -168,6 +179,25 @@ export async function POST(request) {
             isLast: true,
           });
 
+          // Save to Asset Library
+          try {
+            await dbConnect();
+            await Asset.create({
+              userId: session.user.id,
+              name: `AI Walkthrough - ${new Date().toLocaleDateString()}`,
+              url: videoUrl, // Note: This is an internal proxy URL
+              type: "clip",
+              metadata: {
+                fileId,
+                source: "veo",
+                context: context
+              }
+            });
+            console.log("[AI Walkthrough] Created asset for video:", fileId);
+          } catch (dbErr) {
+            console.error("[AI Walkthrough] DB Error:", dbErr);
+          }
+
           send({ type: "done", totalVideos: 1 });
           controller.close();
         } catch (err) {
@@ -199,12 +229,17 @@ const SKIN_ENHANCER_TOKENS = `Photorealistic detail. Real human skin with visibl
 /**
  * Build a cinematic Veo prompt from a script part.
  */
-function buildPrompt(scriptPart, isFirst) {
-  const masterBase = `High-end luxury real estate walkthrough video in 9:16 portrait. Cinematic lighting, soft natural sunlight, shallow depth of field, 4k photorealistic detail. The professional agent (as seen in reference) walks through the property with a warm, confident smile, gesturing naturally to the surroundings. They are speaking directly to the camera with natural micro-expressions and eye movement. ${SKIN_ENHANCER_TOKENS}`;
+function buildPrompt(scriptPart, isFirst, context = "real-estate") {
+  const isProduct = context === "product";
+
+  const masterBase = isProduct
+    ? `High-end commercial product showcase video in 9:16 portrait. Cinematic studio lighting, sharp focus on the product, sophisticated product photography style, 4k photorealistic detail. The professional presenter (as seen in reference) stands confidently with the product (as seen in reference), gesturing naturally to highlight its features. They are speaking directly to the camera with natural micro-expressions and eye movement. ${SKIN_ENHANCER_TOKENS}`
+    : `High-end luxury real estate walkthrough video in 9:16 portrait. Cinematic lighting, soft natural sunlight, shallow depth of field, 4k photorealistic detail. The professional agent (as seen in reference) walks through the property with a warm, confident smile, gesturing naturally to the surroundings. They are speaking directly to the camera with natural micro-expressions and eye movement. ${SKIN_ENHANCER_TOKENS}`;
 
   if (isFirst) {
-    return `${masterBase} The video opens with a smooth tracking shot. The agent looks at the camera and speaks clearly: "${scriptPart}". Everything looks crisp, premium, and inviting. High-quality synchronized audio.`;
+    const action = isProduct ? "presenting the product" : "smooth tracking shot";
+    return `${masterBase} The video opens with a ${action}. The presenter looks at the camera and speaks clearly: "${scriptPart}". Everything looks crisp, premium, and professional. High-quality synchronized audio.`;
   }
   
-  return `SEAMLESS CONTINUITY: ${masterBase} The agent continues their walk and speech naturally without any jump cuts, continuing their message: "${scriptPart}". Maintain identical appearance of the person, clothing, and the high-end property interior. Smooth gimbal motion continues. High-quality synchronized audio.`;
+  return `SEAMLESS CONTINUITY: ${masterBase} The presenter continues their presentation and speech naturally without any jump cuts, continuing their message: "${scriptPart}". Maintain identical appearance of the person, clothing, and the ${isProduct ? "product and studio setting" : "high-end property interior"}. Smooth motion continues. High-quality synchronized audio.`;
 }
