@@ -33,7 +33,7 @@ import { AssetSelector } from "@/components/dashboard/asset-selector";
 
 const MAX_SCRIPT = 200;
 
-const RE_AVATARS = Array.from({ length: 6 }, (_, i) => ({
+const RE_AVATARS = Array.from({ length: 14 }, (_, i) => ({
   id: `re-${i + 1}`,
   name: `RE Agent ${i + 1}`,
   url: `/avatars/re/realestate${i + 1}.png`,
