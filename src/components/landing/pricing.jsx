@@ -13,9 +13,10 @@ const plans = [
     price: "₹0",
     period: "forever",
     description: "Try it out – no credit card needed",
-    credits: "10 credits",
+    credits: "2 video + 2 avatar generations",
     features: [
-      "10 free video generations",
+      "2 free video generations",
+      "2 free avatar generations",
       "Access to all 20+ avatars",
       "All Indian-accent voices",
       "9:16 vertical format",

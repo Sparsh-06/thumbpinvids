@@ -1,16 +1,16 @@
 import { NextResponse } from "next/server";
 import dbConnect from "@/lib/mongodb";
 import Video from "@/models/Video";
-import User from "@/models/User";
 import { getServerSession } from "next-auth/next";
 import { authOptions } from "@/lib/auth-config";
 import { generateTTS } from "@/lib/api/tts";
 import { generateLipSync } from "@/lib/api/lipsync";
+import { consumeCreditsForAction, refundCreditsForAction } from "@/lib/credit-system";
 
 export async function POST(request) {
   let videoId = null;
   let userId = null;
-  let creditsDeducted = false;
+  let debit = null;
 
   try {
     // ── 1. Parse & Validate Input ──────────────────────────
@@ -43,25 +43,27 @@ export async function POST(request) {
     userId = session.user.id;
     await dbConnect();
 
-    // ── 3. Check & Deduct Credits ──────────────────────────
-    const user = await User.findById(userId);
-    if (!user || user.credits < 2) {
-      return NextResponse.json(
-        { error: "Not enough credits. You need 2 credits to generate a video." },
-        { status: 402 }
-      );
+    // ── 3. Check & Deduct Credits (centralized) ────────────
+    const creditResult = await consumeCreditsForAction({
+      userId,
+      action: "generate_video",
+      metadata: {
+        endpoint: "/api/generate",
+      },
+    });
+
+    if (!creditResult.ok) {
+      return NextResponse.json(creditResult.payload, { status: creditResult.status });
     }
 
-    user.credits -= 2;
-    await user.save();
-    creditsDeducted = true;
+    debit = creditResult.debit;
 
     // ── 4. Insert Video Row (status: queued) ───────────────
     const video = await Video.create({
       userId,
       script: script.trim(),
       avatarUrl: avatar_url,
-      voiceId,
+      voiceId: voice_id,
       musicEnabled: music_enabled ?? true,
       status: "queued",
     });
@@ -74,7 +76,7 @@ export async function POST(request) {
       expression: expression || "friendly",
       gesture_intensity: gesture_intensity || "natural",
       head_motion: head_motion || "natural",
-    });
+    }, debit);
 
     return NextResponse.json({
       success: true,
@@ -85,12 +87,17 @@ export async function POST(request) {
   } catch (error) {
     console.error("[Generate] Unexpected error:", error);
 
-    if (creditsDeducted && userId) {
-      const user = await User.findById(userId);
-      if (user) {
-        user.credits += 2;
-        await user.save();
-      }
+    if (debit && userId) {
+      await refundCreditsForAction({
+        userId,
+        action: "generate_video",
+        debit,
+        metadata: {
+          endpoint: "/api/generate",
+          reason: "request_failure",
+          videoId,
+        },
+      });
     }
 
     return NextResponse.json(
@@ -101,7 +108,7 @@ export async function POST(request) {
 }
 
 // ── Async Pipeline ───────────────────────────────────────────
-async function runPipelineAsync(videoId, userId, script, avatarUrl, voiceId, gestureConfig = {}) {
+async function runPipelineAsync(videoId, userId, script, avatarUrl, voiceId, gestureConfig = {}, debit = null) {
   try {
     await Video.findByIdAndUpdate(videoId, { status: "generating" });
 
@@ -142,10 +149,17 @@ async function runPipelineAsync(videoId, userId, script, avatarUrl, voiceId, ges
       errorMessage: error.message,
     });
 
-    const user = await User.findById(userId);
-    if (user) {
-      user.credits += 2;
-      await user.save();
+    if (debit) {
+      await refundCreditsForAction({
+        userId,
+        action: "generate_video",
+        debit,
+        metadata: {
+          endpoint: "/api/generate",
+          reason: "pipeline_failure",
+          videoId,
+        },
+      });
     }
   }
 }

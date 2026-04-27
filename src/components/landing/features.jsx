@@ -42,8 +42,8 @@ const features = [
   },
   {
     icon: Gauge,
-    title: "10 Free Credits",
-    description: "Start with 10 free video generations. No credit card required. Upgrade anytime.",
+    title: "Free Starter Quota",
+    description: "Start with 2 free video generations + 2 free avatar generations. No credit card required.",
     color: "text-orange-500",
     bgColor: "bg-orange-500/10",
   },

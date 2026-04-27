@@ -50,7 +50,7 @@ export function Hero() {
             <div className="flex flex-col sm:flex-row gap-4 justify-center lg:justify-start">
               <Link href="/auth/signup">
                 <Button size="lg" className="gradient-bg text-white text-lg px-8 py-6 shadow-xl hover:opacity-90 cursor-pointer group">
-                  Start Free – 10 Credits
+                  Start Free – 2 Videos + 2 Avatars
                   <ArrowRight className="w-5 h-5 ml-2 group-hover:translate-x-1 transition-transform" />
                 </Button>
               </Link>

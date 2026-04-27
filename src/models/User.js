@@ -29,7 +29,18 @@ const UserSchema = new mongoose.Schema(
     },
     credits: {
       type: Number,
-      default: 5,
+      default: 0,
+      min: 0,
+    },
+    freeVideoGenerationsUsed: {
+      type: Number,
+      default: 0,
+      min: 0,
+    },
+    freeAvatarGenerationsUsed: {
+      type: Number,
+      default: 0,
+      min: 0,
     },
     role: {
       type: String,

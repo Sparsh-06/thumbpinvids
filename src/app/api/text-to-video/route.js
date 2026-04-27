@@ -1,5 +1,8 @@
 import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth-config";
+import { consumeCreditsForAction, refundCreditsForAction } from "@/lib/credit-system";
 
 /**
  * Text-to-Video Generation API
@@ -156,7 +159,17 @@ const MODEL_CONFIGS = {
 };
 
 export async function POST(request) {
+  let userId = null;
+  let debit = null;
+
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    userId = session.user.id;
+
     const body = await request.json();
     const { prompt, model, settings = {} } = body;
 
@@ -191,6 +204,21 @@ export async function POST(request) {
         estimated_time: "30-120 seconds",
       });
     }
+
+    const creditResult = await consumeCreditsForAction({
+      userId,
+      action: "text_to_video",
+      metadata: {
+        endpoint: "/api/text-to-video",
+        model,
+      },
+    });
+
+    if (!creditResult.ok) {
+      return NextResponse.json(creditResult.payload, { status: creditResult.status });
+    }
+
+    debit = creditResult.debit;
 
     // SPECIAL HANDLING: Google Gemini (Veo)
     if (config.isSDK && model === "gemini") {
@@ -232,6 +260,18 @@ export async function POST(request) {
     
     if (!response.ok) {
       console.error(`[T2V] ${config.name} error:`, response.status, responseData);
+      await refundCreditsForAction({
+        userId,
+        action: "text_to_video",
+        debit,
+        metadata: {
+          endpoint: "/api/text-to-video",
+          model,
+          reason: "provider_error",
+          status: response.status,
+        },
+      });
+
       return NextResponse.json(
         {
           error: `${config.name} API error (${response.status}): ${responseData?.error?.message || responseData?.message || "Unknown error"}`,
@@ -251,6 +291,20 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("[T2V] Error:", error);
+
+    if (userId && debit) {
+      await refundCreditsForAction({
+        userId,
+        action: "text_to_video",
+        debit,
+        metadata: {
+          endpoint: "/api/text-to-video",
+          reason: "unexpected_error",
+          message: error.message,
+        },
+      });
+    }
+
     return NextResponse.json(
       { error: error.message || "Video generation failed" },
       { status: 500 }

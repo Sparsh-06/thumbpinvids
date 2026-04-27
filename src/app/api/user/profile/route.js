@@ -12,7 +12,7 @@ export async function GET() {
     }
 
     await dbConnect();
-    const user = await User.findById(session.user.id).select("-password");
+    const user = await User.findById(session.user.id).select("-hashedPassword");
     
     if (!user) {
       return NextResponse.json({ error: "User not found" }, { status: 404 });

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-config";
+import { consumeCreditsForAction, refundCreditsForAction } from "@/lib/credit-system";
 
 /**
  * POST /api/product-video/generate-avatar
@@ -10,6 +11,9 @@ import { authOptions } from "@/lib/auth-config";
  * Output: { images: [{ url: "data:image/png;base64,..." }] }
  */
 export async function POST(request) {
+  let userId = null;
+  let debit = null;
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "GEMINI_API_KEY is not configured" }, { status: 500 });
@@ -21,12 +25,28 @@ export async function POST(request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    userId = session.user.id;
+
     const body = await request.json();
     const { prompt, variants = 1 } = body;
 
     if (!prompt || prompt.trim().length < 10) {
       return NextResponse.json({ error: "Prompt must be at least 10 characters." }, { status: 400 });
     }
+
+    const creditResult = await consumeCreditsForAction({
+      userId,
+      action: "product_avatar_image",
+      metadata: {
+        endpoint: "/api/product-video/generate-avatar",
+      },
+    });
+
+    if (!creditResult.ok) {
+      return NextResponse.json(creditResult.payload, { status: creditResult.status });
+    }
+
+    debit = creditResult.debit;
 
     const numVariants = Math.min(Math.max(parseInt(variants) || 1, 1), 3);
     const ai = new GoogleGenAI({ apiKey });
@@ -64,12 +84,36 @@ export async function POST(request) {
     }
 
     if (images.length === 0) {
+      await refundCreditsForAction({
+        userId,
+        action: "product_avatar_image",
+        debit,
+        metadata: {
+          endpoint: "/api/product-video/generate-avatar",
+          reason: "empty_result",
+        },
+      });
+
       return NextResponse.json({ error: "Failed to generate any avatar images. Please try again." }, { status: 502 });
     }
 
     return NextResponse.json({ success: true, images });
   } catch (error) {
     console.error("[ProductVideo] Generate avatar error:", error);
+
+    if (userId && debit) {
+      await refundCreditsForAction({
+        userId,
+        action: "product_avatar_image",
+        debit,
+        metadata: {
+          endpoint: "/api/product-video/generate-avatar",
+          reason: "unexpected_error",
+          message: error.message,
+        },
+      });
+    }
+
     return NextResponse.json({ error: error.message || "Avatar generation failed" }, { status: 500 });
   }
 }

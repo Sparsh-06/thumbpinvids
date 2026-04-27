@@ -8,7 +8,7 @@ import { useUser } from "@/hooks/use-user";
 export function UpgradeBanner() {
   const { credits, profile } = useUser();
 
-  if (credits > 5 || profile?.subscription_tier === "pro") return null;
+  if (credits > 5 || profile?.plan === "pro") return null;
 
   return (
     <div className="rounded-xl gradient-bg p-4 text-white shadow-lg glow-purple">

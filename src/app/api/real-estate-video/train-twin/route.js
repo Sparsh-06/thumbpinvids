@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth-config";
+import { consumeCreditsForAction, refundCreditsForAction } from "@/lib/credit-system";
 
 /**
  * POST /api/real-estate-video/train-twin
@@ -11,12 +14,22 @@ import { NextResponse } from "next/server";
  */
 
 export async function POST(request) {
+  let userId = null;
+  let debit = null;
+
   const apiKey = process.env.HEYGEN_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "HEYGEN_API_KEY is not configured" }, { status: 500 });
   }
 
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    userId = session.user.id;
+
     const formData = await request.formData();
     const file = formData.get("file");
     const consentFile = formData.get("consent");
@@ -25,6 +38,20 @@ export async function POST(request) {
     if (!file || !consentFile) {
       return NextResponse.json({ error: "Both training footage and consent video are required." }, { status: 400 });
     }
+
+    const creditResult = await consumeCreditsForAction({
+      userId,
+      action: "digital_twin_training",
+      metadata: {
+        endpoint: "/api/real-estate-video/train-twin",
+      },
+    });
+
+    if (!creditResult.ok) {
+      return NextResponse.json(creditResult.payload, { status: creditResult.status });
+    }
+
+    debit = creditResult.debit;
 
     const allowedTypes = ["video/mp4", "video/quicktime", "video/webm", "video/mov"];
     if (!allowedTypes.includes(file.type) && !file.type.startsWith("video/")) {
@@ -90,6 +117,17 @@ export async function POST(request) {
     const twinData = await twinResponse.json();
     if (!twinResponse.ok) {
       console.error("[RE Twin] Training error:", twinData);
+      await refundCreditsForAction({
+        userId,
+        action: "digital_twin_training",
+        debit,
+        metadata: {
+          endpoint: "/api/real-estate-video/train-twin",
+          reason: "provider_error",
+          status: twinResponse.status,
+        },
+      });
+
       return NextResponse.json(
         { error: twinData.error?.message || "Failed to start Digital Twin training" },
         { status: twinResponse.status }
@@ -107,6 +145,20 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("[RE Twin] Error:", error);
+
+    if (userId && debit) {
+      await refundCreditsForAction({
+        userId,
+        action: "digital_twin_training",
+        debit,
+        metadata: {
+          endpoint: "/api/real-estate-video/train-twin",
+          reason: "unexpected_error",
+          message: error.message,
+        },
+      });
+    }
+
     return NextResponse.json({ error: error.message || "Twin training failed" }, { status: 500 });
   }
 }

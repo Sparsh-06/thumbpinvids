@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth-config";
+import { consumeCreditsForAction, refundCreditsForAction } from "@/lib/credit-system";
 
 /**
  * POST /api/avatar/generate-photo
@@ -6,18 +9,42 @@ import { NextResponse } from "next/server";
  * Body: { name, age, gender, ethnicity, orientation, pose, style, appearance }
  */
 export async function POST(request) {
+  let userId = null;
+  let debit = null;
+
   const apiKey = process.env.HEYGEN_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "HEYGEN_API_KEY is not configured" }, { status: 500 });
   }
 
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    userId = session.user.id;
+
     const body = await request.json();
     const { name, age, gender, ethnicity, orientation, pose, style, appearance } = body;
 
     if (!name || !age || !gender || !ethnicity || !orientation || !pose || !style || !appearance) {
       return NextResponse.json({ error: "All fields are required" }, { status: 400 });
     }
+
+    const creditResult = await consumeCreditsForAction({
+      userId,
+      action: "avatar_photo",
+      metadata: {
+        endpoint: "/api/avatar/generate-photo",
+      },
+    });
+
+    if (!creditResult.ok) {
+      return NextResponse.json(creditResult.payload, { status: creditResult.status });
+    }
+
+    debit = creditResult.debit;
 
     const response = await fetch("https://api.heygen.com/v2/photo_avatar/photo/generate", {
       method: "POST",
@@ -33,6 +60,17 @@ export async function POST(request) {
 
     if (!response.ok) {
       console.error("[generate-photo] HeyGen error:", data);
+      await refundCreditsForAction({
+        userId,
+        action: "avatar_photo",
+        debit,
+        metadata: {
+          endpoint: "/api/avatar/generate-photo",
+          reason: "provider_error",
+          status: response.status,
+        },
+      });
+
       return NextResponse.json(
         { error: data.message || data.error || `HeyGen error (${response.status})` },
         { status: response.status >= 400 && response.status < 500 ? response.status : 502 }
@@ -43,6 +81,20 @@ export async function POST(request) {
     return NextResponse.json({ success: true, generation_id });
   } catch (error) {
     console.error("[generate-photo] Error:", error);
+
+    if (userId && debit) {
+      await refundCreditsForAction({
+        userId,
+        action: "avatar_photo",
+        debit,
+        metadata: {
+          endpoint: "/api/avatar/generate-photo",
+          reason: "unexpected_error",
+          message: error.message,
+        },
+      });
+    }
+
     return NextResponse.json({ error: error.message || "Photo generation failed" }, { status: 500 });
   }
 }

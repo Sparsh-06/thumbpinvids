@@ -1,17 +1,44 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth-config";
+import dbConnect from "@/lib/mongodb";
+import User from "@/models/User";
+
+const CREDIT_PACKS = {
+  "pack-10": { credits: 10, amount: 199 },
+  "pack-50": { credits: 50, amount: 799 },
+  "pack-200": { credits: 200, amount: 2499 },
+  "pack-500": { credits: 500, amount: 4999 },
+};
 
 export async function POST(request) {
   try {
-    const body = await request.json();
-    const { amount, credits, user_id } = body;
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
 
-    // Validate
-    if (!amount || !credits || !user_id) {
+    const body = await request.json();
+    const { packId } = body;
+
+    if (!packId || !CREDIT_PACKS[packId]) {
       return NextResponse.json(
-        { error: "Missing required fields" },
+        { error: "Invalid credit pack" },
         { status: 400 }
       );
     }
+
+    await dbConnect();
+    const user = await User.findById(session.user.id).select("_id email");
+    if (!user) {
+      return NextResponse.json({ error: "User not found" }, { status: 404 });
+    }
+
+    const selectedPack = CREDIT_PACKS[packId];
+    const userId = user._id.toString();
+
+    const amount = selectedPack.amount;
+    const credits = selectedPack.credits;
 
     const RAZORPAY_KEY_ID = process.env.NEXT_PUBLIC_RAZORPAY_KEY_ID;
     const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET;
@@ -22,7 +49,7 @@ export async function POST(request) {
         id: `order_mock_${Date.now()}`,
         amount: amount * 100, // Razorpay expects paise
         currency: "INR",
-        notes: { user_id, credits: credits.toString() },
+        notes: { user_id: userId, credits: credits.toString(), pack_id: packId },
       });
     }
 
@@ -36,10 +63,11 @@ export async function POST(request) {
     const order = await razorpay.orders.create({
       amount: amount * 100, // Amount in paise
       currency: "INR",
-      receipt: `credits_${user_id}_${Date.now()}`,
+      receipt: `credits_${userId}_${Date.now()}`,
       notes: {
-        user_id,
+        user_id: userId,
         credits: credits.toString(),
+        pack_id: packId,
       },
     });
 

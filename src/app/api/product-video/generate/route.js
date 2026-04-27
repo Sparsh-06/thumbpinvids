@@ -6,6 +6,7 @@ import Asset from "@/models/Asset";
 import dbConnect from "@/lib/mongodb";
 import { writeFile, mkdir } from "fs/promises";
 import path from "path";
+import { consumeCreditsForAction, refundCreditsForAction } from "@/lib/credit-system";
 
 /**
  * POST /api/product-video/generate
@@ -14,6 +15,9 @@ import path from "path";
  * Output: SSE stream with progress, video_ready, done events
  */
 export async function POST(request) {
+  let userId = null;
+  let debit = null;
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return NextResponse.json({ error: "GEMINI_API_KEY is not configured" }, { status: 500 });
@@ -27,6 +31,8 @@ export async function POST(request) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
+    userId = session.user.id;
+
     const formData = await request.formData();
     const compositeFile = formData.get("compositeImage");
     const script = formData.get("script");
@@ -38,6 +44,20 @@ export async function POST(request) {
         { status: 400 }
       );
     }
+
+    const creditResult = await consumeCreditsForAction({
+      userId,
+      action: "product_video",
+      metadata: {
+        endpoint: "/api/product-video/generate",
+      },
+    });
+
+    if (!creditResult.ok) {
+      return NextResponse.json(creditResult.payload, { status: creditResult.status });
+    }
+
+    debit = creditResult.debit;
 
     // Convert composite image to base64
     const arrayBuffer = await compositeFile.arrayBuffer();
@@ -184,7 +204,7 @@ export async function POST(request) {
           try {
             await dbConnect();
             await Asset.create({
-              userId: session.user.id,
+              userId,
               name: `Product Video - ${new Date().toLocaleDateString()}`,
               url: localVideoUrl,
               type: "clip",
@@ -204,6 +224,20 @@ export async function POST(request) {
           controller.close();
         } catch (err) {
           console.error("[ProductVideo] Generation error:", err);
+
+          if (userId && debit) {
+            await refundCreditsForAction({
+              userId,
+              action: "product_video",
+              debit,
+              metadata: {
+                endpoint: "/api/product-video/generate",
+                reason: "generation_failed",
+                message: err.message,
+              },
+            });
+          }
+
           send({ type: "error", message: err.message || "Video generation failed" });
           controller.close();
         }
@@ -219,6 +253,20 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("[ProductVideo] Error:", error);
+
+    if (userId && debit) {
+      await refundCreditsForAction({
+        userId,
+        action: "product_video",
+        debit,
+        metadata: {
+          endpoint: "/api/product-video/generate",
+          reason: "unexpected_error",
+          message: error.message,
+        },
+      });
+    }
+
     return NextResponse.json(
       { error: error.message || "Failed to start generation" },
       { status: 500 }

@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import { GoogleGenAI } from "@google/genai";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-config";
-import Video from "@/models/Video";
 import Asset from "@/models/Asset";
 import dbConnect from "@/lib/mongodb";
+import { consumeCreditsForAction, refundCreditsForAction } from "@/lib/credit-system";
 
 /**
  * POST /api/ai-walkthrough/generate
@@ -17,6 +17,9 @@ import dbConnect from "@/lib/mongodb";
  *   scriptParts     — JSON string: array of 3-4 script snippet strings
  */
 export async function POST(request) {
+  let userId = null;
+  let debit = null;
+
   const apiKey = process.env.GEMINI_API_KEY;
   if (!apiKey) {
     return NextResponse.json(
@@ -33,6 +36,8 @@ export async function POST(request) {
     if (!session) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    userId = session.user.id;
 
     const formData = await request.formData();
 
@@ -56,6 +61,22 @@ export async function POST(request) {
     if (!Array.isArray(scriptParts) || scriptParts.length < 1) {
       return NextResponse.json({ error: "scriptParts must be an array of at least 1 string" }, { status: 400 });
     }
+
+    const creditResult = await consumeCreditsForAction({
+      userId,
+      action: "ai_walkthrough",
+      metadata: {
+        endpoint: "/api/ai-walkthrough/generate",
+        context,
+        scriptPartsCount: scriptParts.length,
+      },
+    });
+
+    if (!creditResult.ok) {
+      return NextResponse.json(creditResult.payload, { status: creditResult.status });
+    }
+
+    debit = creditResult.debit;
 
     // ── Convert images to base64 ─────────────────────────────────────────────
     async function fileToBase64(file) {
@@ -202,6 +223,20 @@ export async function POST(request) {
           controller.close();
         } catch (err) {
           console.error("[AI Walkthrough] REST Generation error:", err);
+
+          if (userId && debit) {
+            await refundCreditsForAction({
+              userId,
+              action: "ai_walkthrough",
+              debit,
+              metadata: {
+                endpoint: "/api/ai-walkthrough/generate",
+                reason: "generation_failed",
+                message: err.message,
+              },
+            });
+          }
+
           send({ type: "error", message: err.message || "Video generation failed" });
           controller.close();
         }
@@ -217,6 +252,20 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("[AI Walkthrough] Error:", error);
+
+    if (userId && debit) {
+      await refundCreditsForAction({
+        userId,
+        action: "ai_walkthrough",
+        debit,
+        metadata: {
+          endpoint: "/api/ai-walkthrough/generate",
+          reason: "unexpected_error",
+          message: error.message,
+        },
+      });
+    }
+
     return NextResponse.json({ error: error.message || "Failed to start generation" }, { status: 500 });
   }
 }

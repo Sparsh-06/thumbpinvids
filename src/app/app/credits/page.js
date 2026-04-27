@@ -29,6 +29,10 @@ export default function CreditsPage() {
   const { credits, profile, loading } = useUser();
   const [purchasing, setPurchasing] = useState(null);
 
+  const freeVideoUsed = profile?.freeVideoGenerationsUsed ?? 0;
+  const freeAvatarUsed = profile?.freeAvatarGenerationsUsed ?? 0;
+  const freePlanUsagePercent = Math.min(100, ((freeVideoUsed + freeAvatarUsed) / 4) * 100);
+
   async function handlePurchase(pack) {
     setPurchasing(pack.id);
 
@@ -39,8 +43,6 @@ export default function CreditsPage() {
 
     setTimeout(() => setPurchasing(null), 2000);
   }
-
-  const usagePercent = Math.min(100, ((10 - credits) / 10) * 100);
 
   return (
     <div className="max-w-4xl mx-auto space-y-6 animate-fade-in">
@@ -67,18 +69,26 @@ export default function CreditsPage() {
           </div>
           <div className="mt-4">
             <div className="flex justify-between text-xs text-white/70 mb-1">
-              <span>Usage this period</span>
-              <span>{10 - credits} / 10 used</span>
+              <span>Free tier usage</span>
+              <span>{freeVideoUsed + freeAvatarUsed} / 4 used</span>
             </div>
-            <Progress value={usagePercent} className="h-2 bg-white/20" />
+            <Progress value={freePlanUsagePercent} className="h-2 bg-white/20" />
           </div>
         </div>
         <CardContent className="p-4">
           <div className="flex items-center gap-2">
             <Badge variant="secondary">
-              {profile?.subscription_tier === "pro" ? "Pro Plan" : "Free Plan"}
+              {profile?.plan === "pro" ? "Pro Plan" : "Free Plan"}
             </Badge>
-            <span className="text-xs text-muted-foreground">• 2 credits per video</span>
+            <span className="text-xs text-muted-foreground">• Free: 2 videos + 2 avatars, then paid credits</span>
+          </div>
+          <div className="mt-3 grid grid-cols-2 gap-3 text-xs text-muted-foreground">
+            <div>
+              Video quota: <span className="font-medium text-foreground">{freeVideoUsed}/2</span>
+            </div>
+            <div>
+              Avatar quota: <span className="font-medium text-foreground">{freeAvatarUsed}/2</span>
+            </div>
           </div>
         </CardContent>
       </Card>

@@ -20,7 +20,7 @@ export const metadata = {
   openGraph: {
     title: "Thumb AI – Script to Reel in 60s",
     description:
-      "Generate viral UGC video ads with AI actors & Indian voices. 10 free credits on signup.",
+      "Generate viral UGC video ads with AI actors & Indian voices. Get 2 free videos + 2 free avatars on signup.",
     type: "website",
     locale: "en_IN",
   },

@@ -43,7 +43,9 @@ export const authOptions = {
             name: user.name,
             image: user.image,
             googleId: user.id,
-            credits: 5,
+            credits: 0,
+            freeVideoGenerationsUsed: 0,
+            freeAvatarGenerationsUsed: 0,
           });
           user.id = newUser._id.toString();
         } else {

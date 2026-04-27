@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth-config";
+import { consumeCreditsForAction, refundCreditsForAction } from "@/lib/credit-system";
 
 /**
  * Image Generation API
@@ -21,7 +24,17 @@ const IMAGEN_MODELS = [
 ];
 
 export async function POST(request) {
+  let userId = null;
+  let debit = null;
+
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    userId = session.user.id;
+
     const body = await request.json();
     const { prompt, count = 1 } = body;
 
@@ -31,6 +44,20 @@ export async function POST(request) {
         { status: 400 }
       );
     }
+
+    const creditResult = await consumeCreditsForAction({
+      userId,
+      action: "gemini_image_generation",
+      metadata: {
+        endpoint: "/api/gemini-image",
+      },
+    });
+
+    if (!creditResult.ok) {
+      return NextResponse.json(creditResult.payload, { status: creditResult.status });
+    }
+
+    debit = creditResult.debit;
 
     const apiKey = process.env.GEMINI_API_KEY;
     const images = [];
@@ -66,6 +93,16 @@ export async function POST(request) {
     }
 
     if (images.length === 0) {
+      await refundCreditsForAction({
+        userId,
+        action: "gemini_image_generation",
+        debit,
+        metadata: {
+          endpoint: "/api/gemini-image",
+          reason: "all_methods_failed",
+        },
+      });
+
       return NextResponse.json(
         { error: "All image generation methods failed. Please try again." },
         { status: 502 }
@@ -75,6 +112,16 @@ export async function POST(request) {
     const source = images[0]?.source || "Unknown";
     if (quotaExceeded && source.includes("pollinations")) {
       console.log("[GeminiImg] Gemini quota exceeded, served via Pollinations.ai");
+      await refundCreditsForAction({
+        userId,
+        action: "gemini_image_generation",
+        debit,
+        metadata: {
+          endpoint: "/api/gemini-image",
+          reason: "free_fallback_provider",
+          provider: "pollinations",
+        },
+      });
     }
 
     return NextResponse.json({
@@ -87,6 +134,20 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("[GeminiImg] Error:", error);
+
+    if (userId && debit) {
+      await refundCreditsForAction({
+        userId,
+        action: "gemini_image_generation",
+        debit,
+        metadata: {
+          endpoint: "/api/gemini-image",
+          reason: "unexpected_error",
+          message: error.message,
+        },
+      });
+    }
+
     return NextResponse.json(
       { error: error.message || "Image generation failed" },
       { status: 500 }

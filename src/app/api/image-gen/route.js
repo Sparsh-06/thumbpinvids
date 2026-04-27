@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth-config";
+import { consumeCreditsForAction, refundCreditsForAction } from "@/lib/credit-system";
 
 /**
  * Image Generation API — Multi-model support
@@ -111,7 +114,17 @@ const MODEL_CONFIGS = {
 };
 
 export async function POST(request) {
+  let userId = null;
+  let debit = null;
+
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    userId = session.user.id;
+
     const body = await request.json();
     const { prompt, model = "dall-e", settings = {} } = body;
 
@@ -143,6 +156,21 @@ export async function POST(request) {
       });
     }
 
+    const creditResult = await consumeCreditsForAction({
+      userId,
+      action: "image_generation",
+      metadata: {
+        endpoint: "/api/image-gen",
+        model,
+      },
+    });
+
+    if (!creditResult.ok) {
+      return NextResponse.json(creditResult.payload, { status: creditResult.status });
+    }
+
+    debit = creditResult.debit;
+
     const mapped = config.mapRequest(prompt.trim(), settings, apiKey);
 
     let response;
@@ -166,6 +194,18 @@ export async function POST(request) {
 
     if (!response.ok) {
       console.error(`[ImageGen] ${config.name} error:`, response.status, responseData);
+      await refundCreditsForAction({
+        userId,
+        action: "image_generation",
+        debit,
+        metadata: {
+          endpoint: "/api/image-gen",
+          model,
+          reason: "provider_error",
+          status: response.status,
+        },
+      });
+
       return NextResponse.json(
         { error: `${config.name} error (${response.status}): ${responseData?.error?.message || "Unknown error"}` },
         { status: 502 }
@@ -175,6 +215,17 @@ export async function POST(request) {
     const images = mapped.parseResponse(responseData);
 
     if (!images.length) {
+      await refundCreditsForAction({
+        userId,
+        action: "image_generation",
+        debit,
+        metadata: {
+          endpoint: "/api/image-gen",
+          model,
+          reason: "empty_result",
+        },
+      });
+
       return NextResponse.json({
         success: true,
         demo: true,
@@ -192,6 +243,20 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("[ImageGen] Error:", error);
+
+    if (userId && debit) {
+      await refundCreditsForAction({
+        userId,
+        action: "image_generation",
+        debit,
+        metadata: {
+          endpoint: "/api/image-gen",
+          reason: "unexpected_error",
+          message: error.message,
+        },
+      });
+    }
+
     return NextResponse.json(
       { error: error.message || "Image generation failed" },
       { status: 500 }

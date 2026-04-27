@@ -1,4 +1,7 @@
 import { NextResponse } from "next/server";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/lib/auth-config";
+import { consumeCreditsForAction, refundCreditsForAction } from "@/lib/credit-system";
 
 /**
  * Image-to-Video API — Animate a still image into video
@@ -103,7 +106,17 @@ const MODEL_CONFIGS = {
 };
 
 export async function POST(request) {
+  let userId = null;
+  let debit = null;
+
   try {
+    const session = await getServerSession(authOptions);
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+
+    userId = session.user.id;
+
     const body = await request.json();
     const { image_url, prompt, model = "kling", settings = {} } = body;
 
@@ -137,6 +150,21 @@ export async function POST(request) {
       });
     }
 
+    const creditResult = await consumeCreditsForAction({
+      userId,
+      action: "image_to_video",
+      metadata: {
+        endpoint: "/api/image-to-video",
+        model,
+      },
+    });
+
+    if (!creditResult.ok) {
+      return NextResponse.json(creditResult.payload, { status: creditResult.status });
+    }
+
+    debit = creditResult.debit;
+
     const mapped = config.mapRequest(image_url, prompt?.trim() || "", settings, apiKey);
 
     const response = await fetch(mapped.url, {
@@ -149,6 +177,18 @@ export async function POST(request) {
 
     if (!response.ok) {
       console.error(`[I2V] ${config.name} error:`, response.status, responseData);
+      await refundCreditsForAction({
+        userId,
+        action: "image_to_video",
+        debit,
+        metadata: {
+          endpoint: "/api/image-to-video",
+          model,
+          reason: "provider_error",
+          status: response.status,
+        },
+      });
+
       return NextResponse.json(
         { error: `${config.name} error (${response.status}): ${responseData?.error?.message || responseData?.message || "Unknown error"}` },
         { status: 502 }
@@ -165,6 +205,20 @@ export async function POST(request) {
     });
   } catch (error) {
     console.error("[I2V] Error:", error);
+
+    if (userId && debit) {
+      await refundCreditsForAction({
+        userId,
+        action: "image_to_video",
+        debit,
+        metadata: {
+          endpoint: "/api/image-to-video",
+          reason: "unexpected_error",
+          message: error.message,
+        },
+      });
+    }
+
     return NextResponse.json(
       { error: error.message || "Image-to-video generation failed" },
       { status: 500 }
