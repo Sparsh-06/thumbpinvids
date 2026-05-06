@@ -52,7 +52,7 @@ export default function MultiImageUploadBox({ images, onAdd, onRemove, maxImages
               className="relative group rounded-xl overflow-hidden border border-gray-200 bg-white shadow-sm hover:shadow-md transition-all duration-300 aspect-[4/3]"
             >
               <img
-                src={URL.createObjectURL(img)}
+                src={img.url || URL.createObjectURL(img.file || img)}
                 alt={`Property ${i + 1}`}
                 className="w-full h-full object-cover"
               />

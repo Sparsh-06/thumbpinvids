@@ -24,25 +24,35 @@ export async function POST(request) {
     }
 
     const formData = await request.formData();
-    const avatarFile = formData.get("avatarImage");
-    const propertyFile = formData.get("propertyImage");
+    const avatarUrl = formData.get("avatarUrl");
+    const propertyUrl = formData.get("propertyUrl");
     const direction = formData.get("direction");
 
-    if (!avatarFile || !propertyFile) {
-      return NextResponse.json({ error: "Both avatarImage and propertyImage are required" }, { status: 400 });
+    if (!avatarUrl || !propertyUrl) {
+      return NextResponse.json({ error: "Both avatarUrl and propertyUrl are required" }, { status: 400 });
     }
 
-    async function fileToBase64(file) {
-      const arrayBuffer = await file.arrayBuffer();
-      const buffer = Buffer.from(arrayBuffer);
-      return {
-        data: buffer.toString("base64"),
-        mimeType: file.type || "image/jpeg",
-      };
+    const avatarRes = await fetch(avatarUrl);
+    if (!avatarRes.ok) {
+      return NextResponse.json({ error: `Failed to fetch avatar: ${avatarRes.statusText}` }, { status: 400 });
     }
+    const avatarBuffer = Buffer.from(await avatarRes.arrayBuffer());
 
-    const avatarData = await fileToBase64(avatarFile);
-    const propertyData = await fileToBase64(propertyFile);
+    const propertyRes = await fetch(propertyUrl);
+    if (!propertyRes.ok) {
+      return NextResponse.json({ error: `Failed to fetch property: ${propertyRes.statusText}` }, { status: 400 });
+    }
+    const propertyBuffer = Buffer.from(await propertyRes.arrayBuffer());
+
+    const avatarData = {
+      data: avatarBuffer.toString("base64"),
+      mimeType: "image/jpeg",
+    };
+
+    const propertyData = {
+      data: propertyBuffer.toString("base64"),
+      mimeType: "image/jpeg",
+    };
 
     const ai = new GoogleGenAI({ apiKey });
 

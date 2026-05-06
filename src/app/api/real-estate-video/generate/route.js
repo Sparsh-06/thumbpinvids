@@ -34,14 +34,14 @@ export async function POST(request) {
     userId = session.user.id;
 
     const formData = await request.formData();
-    const compositeFile = formData.get("compositeImage");
+    const compositeUrl = formData.get("compositeUrl");
     const script = formData.get("script");
     // Voice prompt is now optional — generated internally if not provided
     let voicePrompt = formData.get("voicePrompt") || "";
 
-    if (!compositeFile || !script) {
+    if (!compositeUrl || !script) {
       return NextResponse.json(
-        { error: "compositeImage and script are required" },
+        { error: "compositeUrl and script are required" },
         { status: 400 }
       );
     }
@@ -60,15 +60,24 @@ export async function POST(request) {
 
     debit = creditResult.debit;
 
-    const arrayBuffer = await compositeFile.arrayBuffer();
-    const buffer = Buffer.from(arrayBuffer);
+    const compositeUrl = formData.get("compositeUrl");
+
+    if (!compositeUrl) {
+      return NextResponse.json({ error: "compositeUrl is required" }, { status: 400 });
+    }
+
+    const res = await fetch(compositeUrl);
+    if (!res.ok) {
+      return NextResponse.json({ error: `Failed to fetch composite: ${res.statusText}` }, { status: 400 });
+    }
+    const buffer = Buffer.from(await res.arrayBuffer());
     const compositeBase64 = {
       imageBytes: buffer.toString("base64"),
-      mimeType: compositeFile.type || "image/jpeg",
+      mimeType: "image/jpeg",
     };
     const compositeInlineData = {
       data: buffer.toString("base64"),
-      mimeType: compositeFile.type || "image/jpeg",
+      mimeType: "image/jpeg",
     };
 
     const referenceImages = [

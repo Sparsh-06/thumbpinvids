@@ -160,6 +160,21 @@ async function compressImage(file, maxDimension = 1200, quality = 0.7) {
   });
 }
 
+async function uploadToR2(file) {
+  const fd = new FormData();
+  fd.append("file", file);
+
+  const res = await fetch("/api/upload-image", {
+    method: "POST",
+    body: fd,
+  });
+
+  const data = await res.json();
+  if (!res.ok) throw new Error(data.error);
+
+  return data.url;
+}
+
 function dataUrlToFile(dataUrl, filename) {
   const arr = dataUrl.split(",");
   const mime = arr[0].match(/:(.*?);/)?.[1] || "image/png";
@@ -340,8 +355,17 @@ function RealEstateVideoContent() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Failed");
-      setGeneratedAvatars(data.images || []);
-      toast.success(`Generated ${data.images.length} avatar(s)!`);
+      
+      const uploadedAvatars = await Promise.all(
+        (data.images || []).map(async (img, i) => {
+          const file = dataUrlToFile(img.url, `avatar-${i}.png`);
+          const url = await uploadToR2(file);
+          return { url, file };
+        })
+      );
+      
+      setGeneratedAvatars(uploadedAvatars);
+      toast.success(`Generated ${uploadedAvatars.length} avatar(s)!`);
     } catch (err) {
       toast.error("Avatar generation failed", { description: err.message });
     } finally {
@@ -373,10 +397,10 @@ function RealEstateVideoContent() {
         toast.info(`Creating composite ${i + 1}/${propertyImages.length}...`, {
           id: "composite-progress",
         });
-        const compressedProperty = await compressImage(propertyImages[i]);
+        const propertyImage = propertyImages[i];
         const fd = new FormData();
-        fd.append("avatarImage", avatarFile);
-        fd.append("propertyImage", compressedProperty);
+        fd.append("avatarUrl", selectedAvatar.url);
+        fd.append("propertyUrl", propertyImage.url);
 
         const res = await fetch("/api/real-estate-video/composite", {
           method: "POST",
@@ -385,9 +409,12 @@ function RealEstateVideoContent() {
         const data = await res.json();
         if (!res.ok) throw new Error(data.error || `Composite ${i + 1} failed`);
 
+        const file = dataUrlToFile(data.compositeUrl, "composite.png");
+        const url = await uploadToR2(file);
+
         results.push({
-          url: data.compositeUrl,
-          file: dataUrlToFile(data.compositeUrl, `re-composite-${i}.png`),
+          url,
+          file,
           title: `Property ${i + 1}`,
           propertyIndex: i,
         });
@@ -520,7 +547,7 @@ function RealEstateVideoContent() {
   // ── Single video generation via SSE ────────────────────────────────────────
   async function generateSingleVideo(composite, scriptText, videoIndex) {
     const fd = new FormData();
-    fd.append("compositeImage", composite.file);
+    fd.append("compositeUrl", composite.url);
     fd.append("script", scriptText.trim());
 
     const response = await fetch("/api/real-estate-video/generate", {
@@ -671,29 +698,15 @@ function RealEstateVideoContent() {
     videoStatuses.length > 0 && videoStatuses.some((s) => s !== "idle");
 
   return (
-    <div className="max-w-2xl mx-auto py-2 px-4 animate-fade-in">
+    <div className="max-w-2xl mx-auto px-4 animate-fade-in">
       {/* Header */}
       <div className="flex items-center gap-3 mb-6">
-        <div className="w-10 h-10 rounded-xl gradient-bg flex items-center justify-center shadow-md">
-          <Building2 className="w-5 h-5 text-white" />
-        </div>
         <div>
-          <h1 className="text-2xl font-bold font-heading">Real Estate Video</h1>
+          <h1 className="text-2xl font-bold font-heading">Generate your cinematic</h1>
           <p className="text-sm text-muted-foreground">
-            3 steps to a cinematic property showcase
+            3 steps to a real estate cinematic property showcase
           </p>
         </div>
-      </div>
-
-      {/* Info */}
-      <div className="rounded-xl border border-primary/20 bg-primary/5 p-3 flex gap-2.5 mb-6">
-        <Info className="w-4 h-4 text-primary shrink-0 mt-0.5" />
-        <p className="text-xs text-muted-foreground leading-relaxed">
-          <strong className="text-foreground">1.</strong> Upload properties &
-          pick avatar → <strong className="text-foreground">2.</strong> Choose
-          your best composite → <strong className="text-foreground">3.</strong>{" "}
-          Add script & generate!
-        </p>
       </div>
 
       {/* 3 Steps */}
@@ -705,9 +718,9 @@ function RealEstateVideoContent() {
                 onClick={() => {
                   if (i < step) setStep(i);
                 }}
-                className={`flex items-center gap-1.5 text-xs font-medium px-3 py-2 rounded-full transition-all whitespace-nowrap cursor-pointer ${
+                className={`flex items-center border border-black gap-1.5 text-xs font-medium px-3 py-2 rounded-full transition-all whitespace-nowrap cursor-pointer ${
                   step === i
-                    ? "gradient-bg text-white shadow-md"
+                    ? "bg-amber-500 text-black"
                     : i < step
                       ? "bg-primary/10 text-primary"
                       : "text-muted-foreground bg-muted/50"
@@ -716,7 +729,7 @@ function RealEstateVideoContent() {
                 {i < step ? (
                   <CheckCircle2 className="w-3.5 h-3.5" />
                 ) : (
-                  <span className="w-5 h-5 rounded-full border text-[11px] flex items-center justify-center font-bold">
+                  <span className="w-5 h-5 rounded-full border border-black text-[11px] flex items-center justify-center font-bold">
                     {i + 1}
                   </span>
                 )}
@@ -738,9 +751,11 @@ function RealEstateVideoContent() {
           {/* Property Images */}
           <MultiImageUploadBox
             images={propertyImages}
-            onAdd={(file) =>
-              setPropertyImages((prev) => [...prev, file].slice(0, 3))
-            }
+            onAdd={async (file) => {
+              const compressed = await compressImage(file);
+              const url = await uploadToR2(compressed);
+              setPropertyImages((prev) => [...prev, { file: compressed, url }].slice(0, 3));
+            }}
             onRemove={(i) =>
               setPropertyImages((prev) => prev.filter((_, idx) => idx !== i))
             }
@@ -919,13 +934,15 @@ function RealEstateVideoContent() {
                         type="file"
                         accept="image/*"
                         className="hidden"
-                        onChange={(e) => {
+                        onChange={async (e) => {
                           const file = e.target.files?.[0];
                           if (file) {
-                            setUploadedAvatarFile(file);
+                            const compressed = await compressImage(file);
+                            const url = await uploadToR2(compressed);
+                            setUploadedAvatarFile(compressed);
                             setSelectedAvatar({
-                              url: URL.createObjectURL(file),
-                              file,
+                              url,
+                              file: compressed,
                               name: "Custom",
                             });
                           }
@@ -1451,9 +1468,9 @@ function RealEstateVideoContent() {
                 handleGenerateComposites();
               }}
               disabled={!step0Valid}
-              className="gradient-bg text-white shadow-md cursor-pointer px-6"
+              className="bg-linear-to-br from-black via-neutral-700 to-neutral-900 text-white shadow-md cursor-pointer px-6"
             >
-              Create Composites <ChevronRight className="w-4 h-4 ml-1" />
+              Proceed
             </Button>
           </div>
         </div>
