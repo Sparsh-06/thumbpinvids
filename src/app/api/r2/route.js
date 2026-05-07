@@ -30,9 +30,21 @@ export async function GET(request) {
     }
 
     // ── Ownership check ───────────────────────────────────────────────────────
-    const ownedPrefix = `users/${session.user.id}/`;
-    if (!key.startsWith(ownedPrefix)) {
-      return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+    
+    // 1. Allow public access to Avatars
+    const isPublic = key.startsWith("Avatars/");
+
+    if (!isPublic) {
+      // 2. For private user assets, require a session
+      if (!session?.user?.id) {
+        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+      }
+
+      // 3. Enforce that users can only access their own "users/{userId}/" prefix
+      const ownedPrefix = `users/${session.user.id}/`;
+      if (!key.startsWith(ownedPrefix)) {
+        return NextResponse.json({ error: "Forbidden" }, { status: 403 });
+      }
     }
 
     // ── Fetch from R2 ─────────────────────────────────────────────────────────
