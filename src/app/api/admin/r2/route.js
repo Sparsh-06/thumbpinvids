@@ -24,14 +24,19 @@ import { s3, BUCKET } from "@/lib/r2";
 // ─── GET ─────────────────────────────────────────────────────────────────────
 
 export async function GET(request) {
-  const session = await verifyAdminSession();
-  if (!session) {
-    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-  }
-
   const { searchParams } = new URL(request.url);
   const key = searchParams.get("key");
   const prefix = searchParams.get("prefix") ?? "";
+
+  // 1. Allow public access to Avatars via GET
+  const isPublicAvatar = key && key.startsWith("Avatars/");
+
+  if (!isPublicAvatar) {
+    const session = await verifyAdminSession();
+    if (!session) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    }
+  }
 
   // Stream a single object
   if (key) {

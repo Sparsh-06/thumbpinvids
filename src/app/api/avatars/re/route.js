@@ -49,7 +49,7 @@ export async function GET() {
           displayName,
           key: obj.Key,
           // Serve via the admin R2 route which streams directly from R2
-          url: `/api/admin/r2?key=${encodeURIComponent(obj.Key)}`,
+          url: `/api/r2?key=${encodeURIComponent(obj.Key)}`,
           lastModified: obj.LastModified,
         });
       }
