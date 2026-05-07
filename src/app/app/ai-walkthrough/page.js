@@ -1,6 +1,5 @@
 "use client";
-
-import { useState, useRef, Suspense, useEffect } from "react";
+import { useState, Suspense, useEffect } from "react";
 import { useSearchParams } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
@@ -19,25 +18,24 @@ import {
   ChevronRight,
   Info,
   Download,
-  ImagePlus,
-  Play,
   RotateCcw,
   PenLine,
   Layers,
   Check,
   MapPin,
   Building2,
-  Save,
   Film,
   Merge,
 } from "lucide-react";
 import { AssetSelector } from "@/components/dashboard/asset-selector";
 import { combineVideos, uploadCombinedVideo } from "@/lib/video-combiner";
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from "@/components/ui/sheet";
+import MultiImageUploadBox from "@/modules/ai-walkthrough/components/MultiImageUploadBox";
+import VideoCard from "@/modules/ai-walkthrough/components/VideoCard";
+import dataUrlToFile from "@/modules/ai-walkthrough/helpers/dataUrlToFile";
+import compressImage from "@/modules/ai-walkthrough/helpers/compressImage";
 
 const MAX_SCRIPT = 200;
-
-// RE_AVATARS is now fetched dynamically from /api/avatars/re (Cloudflare R2)
 
 const LANGUAGES = [
   { id: "english", label: "English" },
@@ -99,142 +97,7 @@ const FLOOR_OPTIONS = ["Ground", "1-5", "6-10", "11-20", "20+", "Top Floor", "Du
 
 const STORAGE_KEY = "re_walkthrough_state";
 
-async function compressImage(file, maxDimension = 1200, quality = 0.7) {
-  return new Promise((resolve) => {
-    const reader = new FileReader();
-    reader.onload = (e) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        let width = img.width;
-        let height = img.height;
-        if (width > height) {
-          if (width > maxDimension) { height *= maxDimension / width; width = maxDimension; }
-        } else {
-          if (height > maxDimension) { width *= maxDimension / height; height = maxDimension; }
-        }
-        canvas.width = width;
-        canvas.height = height;
-        canvas.getContext("2d").drawImage(img, 0, 0, width, height);
-        canvas.toBlob(
-          (blob) => resolve(new File([blob], file.name, { type: "image/jpeg", lastModified: Date.now() })),
-          "image/jpeg",
-          quality
-        );
-      };
-      img.src = e.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
-}
 
-function dataUrlToFile(dataUrl, filename) {
-  const arr = dataUrl.split(",");
-  const mime = arr[0].match(/:(.*?);/)?.[1] || "image/png";
-  const bstr = atob(arr[1]);
-  let n = bstr.length;
-  const u8arr = new Uint8Array(n);
-  while (n--) u8arr[n] = bstr.charCodeAt(n);
-  return new File([u8arr], filename, { type: mime });
-}
-
-// ─── Multi-image upload for properties ───────────────────────────────────────
-function MultiImageUploadBox({ images, onAdd, onRemove, maxImages = 3 }) {
-  const inputRef = useRef(null);
-
-  function handleFiles(files) {
-    const valid = Array.from(files).filter((f) => f.type.startsWith("image/"));
-    valid.forEach((f) => {
-      if (images.length < maxImages) onAdd(f);
-    });
-  }
-
-  return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2">
-        <Building2 className="w-4 h-4 text-primary" />
-        <span className="text-sm font-semibold">Property Images</span>
-        <Badge variant="outline" className="text-[10px] ml-auto">{images.length}/{maxImages}</Badge>
-      </div>
-      <p className="text-xs text-muted-foreground">
-        Upload 1-{maxImages} property images. A composite will be created for each.
-      </p>
-
-      {images.length > 0 && (
-        <div className={`grid gap-3 ${images.length === 1 ? "grid-cols-1 max-w-xs mx-auto" : images.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
-          {images.map((img, i) => (
-            <div key={i} className="relative rounded-xl overflow-hidden border border-border/50 shadow-md group aspect-[4/3]">
-              <img src={URL.createObjectURL(img)} alt={`Property ${i + 1}`} className="w-full h-full object-cover" />
-              <button
-                onClick={() => onRemove(i)}
-                className="absolute top-2 right-2 w-6 h-6 bg-black/60 rounded-full flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer"
-              >
-                <X className="w-3 h-3 text-white" />
-              </button>
-              <Badge className="absolute top-2 left-2 bg-black/70 text-white border-0 text-[10px] backdrop-blur-sm">
-                <MapPin className="w-2.5 h-2.5 mr-0.5" /> Property {i + 1}
-              </Badge>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {images.length < maxImages && (
-        <div
-          onDragOver={(e) => { e.preventDefault(); e.currentTarget.classList.add("border-primary", "bg-primary/5"); }}
-          onDragLeave={(e) => { e.currentTarget.classList.remove("border-primary", "bg-primary/5"); }}
-          onDrop={(e) => { e.preventDefault(); e.currentTarget.classList.remove("border-primary", "bg-primary/5"); handleFiles(e.dataTransfer.files); }}
-          onClick={() => inputRef.current?.click()}
-          className="border-2 border-dashed border-border/50 rounded-xl p-6 flex flex-col items-center gap-2 hover:border-primary/40 hover:bg-primary/5 transition-all cursor-pointer"
-        >
-          <ImagePlus className="w-5 h-5 text-primary" />
-          <p className="text-xs text-muted-foreground">
-            {images.length === 0 ? "Upload property images (1-3)" : `Add more (${maxImages - images.length} remaining)`}
-          </p>
-          <input ref={inputRef} type="file" accept="image/*" multiple className="hidden"
-            onChange={(e) => { if (e.target.files?.length) handleFiles(e.target.files); }} />
-        </div>
-      )}
-    </div>
-  );
-}
-
-// ─── Video Result Card ───────────────────────────────────────────────────────
-function VideoCard({ status, video }) {
-  const isGenerating = status === "generating";
-  const isReady = status === "ready" && video?.videoUrl;
-
-  return (
-    <div className={`rounded-xl border transition-all ${
-      isReady ? "border-primary/40 bg-card shadow-lg" : isGenerating ? "border-amber-500/40 bg-amber-500/5 animate-pulse" : "border-border/40 bg-muted/30 opacity-50"
-    }`}>
-      <div className="p-3 flex items-center gap-3">
-        <div className={`w-8 h-8 rounded-full flex items-center justify-center shrink-0 text-sm font-bold ${
-          isReady ? "gradient-bg text-white" : isGenerating ? "bg-amber-500/20 text-amber-600 dark:text-amber-400" : "bg-muted text-muted-foreground"
-        }`}>
-          {isReady ? <CheckCircle2 className="w-4 h-4" /> : isGenerating ? <Loader2 className="w-4 h-4 animate-spin" /> : "1"}
-        </div>
-        <div className="flex-1 min-w-0">
-          <p className="text-sm font-semibold">{isReady ? "Video Ready!" : isGenerating ? "Generating..." : "Waiting..."}</p>
-          <p className="text-xs text-muted-foreground">{isReady ? "Your property showcase is ready" : isGenerating ? "Crafting voice & video..." : "Pending"}</p>
-        </div>
-      </div>
-      {isReady && video?.videoUrl && (
-        <div className="px-3 pb-3">
-          <div className="rounded-xl overflow-hidden bg-black aspect-[9/16] max-h-80 mx-auto">
-            <video src={video.videoUrl} controls className="w-full h-full object-contain" />
-          </div>
-          <div className="flex justify-end mt-2">
-            <a href={video.videoUrl} download="real-estate-video.mp4" target="_blank" rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs font-medium text-primary hover:text-primary/80 transition-colors">
-              <Download className="w-3.5 h-3.5" /> Download
-            </a>
-          </div>
-        </div>
-      )}
-    </div>
-  );
-}
 
 // ─── Main 3-Step Page ────────────────────────────────────────────────────────
 const STEPS = ["Upload & Avatar", "Pick Composite", "Script & Generate"];
