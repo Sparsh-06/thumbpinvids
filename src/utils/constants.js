@@ -1,0 +1,68 @@
+export const MAX_SCRIPT = 200;
+export const MAX_RETRY_ATTEMPTS = 3;
+export const STORAGE_KEY = 're_video_session';
+
+export const STEPS = ["Upload & Avatar", "Pick Composite", "Script & Generate"];
+
+export const LANGUAGES = [
+  { id: "english", label: "English" },
+  { id: "hindi", label: "Hindi" },
+  { id: "hinglish", label: "Hinglish" },
+];
+
+export const TONES = [
+  { id: "professional", label: "Professional" },
+  { id: "luxury", label: "Luxury" },
+  { id: "casual", label: "Casual" },
+  { id: "energetic", label: "Energetic" },
+  { id: "storytelling", label: "Storytelling" },
+  { id: "urgent", label: "Urgent" },
+  { id: "aspirational", label: "Aspirational" },
+];
+
+export const PROPERTY_TYPES = [
+  "1 BHK Apartment", "2 BHK Apartment", "3 BHK Apartment", "4 BHK Apartment",
+  "Villa", "Penthouse", "Studio", "Independent House", "Plot",
+  "Farmhouse", "Commercial Space", "Row House", "Duplex",
+];
+
+export const PRICE_RANGES = [
+  { id: "30-50L", label: "₹30-50L" },
+  { id: "50L-1Cr", label: "₹50L-1Cr" },
+  { id: "1-2Cr", label: "₹1-2Cr" },
+  { id: "2-5Cr", label: "₹2-5Cr" },
+  { id: "5Cr+", label: "₹5Cr+" },
+  { id: "custom", label: "Custom" },
+];
+
+export const KEY_FEATURES = [
+  "Modular Kitchen", "Floor-to-Ceiling Windows", "Park View", "Balcony",
+  "Smart Home", "Italian Marble", "Walk-in Closet", "Home Office",
+  "Servant Room", "Pooja Room", "City View", "Open Kitchen",
+  "French Windows", "Wooden Flooring", "Designer Bathroom",
+];
+
+export const AMENITIES = [
+  { id: "pool", label: "Pool", emoji: "🏊" },
+  { id: "gym", label: "Gym", emoji: "🏋️" },
+  { id: "clubhouse", label: "Clubhouse", emoji: "🎾" },
+  { id: "parking", label: "Parking", emoji: "🅿️" },
+  { id: "garden", label: "Garden", emoji: "🌳" },
+  { id: "security", label: "24/7 Security", emoji: "🛡️" },
+  { id: "jogging", label: "Jogging Track", emoji: "🏃" },
+  { id: "playground", label: "Kids Play Area", emoji: "🎪" },
+  { id: "power", label: "Power Backup", emoji: "⚡" },
+  { id: "lift", label: "Lift", emoji: "🛗" },
+  { id: "intercom", label: "Intercom", emoji: "📞" },
+  { id: "cctv", label: "CCTV", emoji: "📷" },
+];
+
+export const FURNISHING_OPTIONS = ["Unfurnished", "Semi-Furnished", "Fully Furnished"];
+export const FACING_OPTIONS = ["North", "South", "East", "West", "NE", "NW", "SE", "SW"];
+export const FLOOR_OPTIONS = ["Ground", "1-5", "6-10", "11-20", "20+", "Top Floor", "Duplex"];
+
+export const AVATAR_MODES = [
+  { id: "prebuilt", label: "RE Agents", icon: "PersonStanding" },
+  { id: "upload", label: "Upload", icon: "Upload" },
+  { id: "generate", label: "Create Avatar", icon: "Sparkles" },
+];
