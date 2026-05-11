@@ -104,8 +104,22 @@ export const useComposites = (propertyImages, selectedAvatars) => {
             body: fd 
           });
           
-          const data = await res.json();
-          if (!res.ok) throw new Error(data.error || `Composite failed`);
+          const contentType = res.headers.get("content-type");
+          let data;
+          if (contentType && contentType.includes("application/json")) {
+            data = await res.json();
+          }
+
+          if (!res.ok) {
+            if (res.status === 413) {
+              throw new Error("The images are too large. Please try smaller files.");
+            }
+            throw new Error(data?.error || `Composite failed with status ${res.status}`);
+          }
+
+          if (!data) {
+            throw new Error("Invalid response from server");
+          }
 
           results.push({
             url: data.compositeUrl,

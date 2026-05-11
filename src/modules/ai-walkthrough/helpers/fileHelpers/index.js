@@ -45,9 +45,60 @@ export const ensureFileObject = async (input) => {
   return input;
 };
 
-export const compressImage = async (file) => {
-  // Your compression logic here
-  return file;
+export const compressImage = async (file, maxDimension = 1200, quality = 0.7) => {
+  if (!file) return null;
+  
+  // If we're on the server, we can't use canvas, but these helpers are used in the client
+  if (typeof window === 'undefined') return file;
+
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          const canvas = document.createElement("canvas");
+          let width = img.width;
+          let height = img.height;
+          
+          if (width > height) {
+            if (width > maxDimension) { 
+              height *= maxDimension / width; 
+              width = maxDimension; 
+            }
+          } else {
+            if (height > maxDimension) { 
+              width *= maxDimension / height; 
+              height = maxDimension; 
+            }
+          }
+          
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext("2d");
+          ctx.drawImage(img, 0, 0, width, height);
+          
+          canvas.toBlob(
+            (blob) => {
+              if (!blob) {
+                reject(new Error('Failed to create blob'));
+                return;
+              }
+              resolve(new File([blob], file.name || 'image.jpg', { type: "image/jpeg", lastModified: Date.now() }));
+            },
+            "image/jpeg",
+            quality
+          );
+        } catch (err) {
+          reject(err);
+        }
+      };
+      img.onerror = () => reject(new Error('Failed to load image'));
+      img.src = e.target.result;
+    };
+    reader.onerror = () => reject(new Error('Failed to read file'));
+    reader.readAsDataURL(file);
+  });
 };
 
 export const safeLocalStorage = {
