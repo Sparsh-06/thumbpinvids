@@ -63,28 +63,45 @@ export const Step1Composites = ({ compositesHook, onNext, onBack, isValid }) => 
             </button>
           )}
 
-          <div className={`grid gap-4 ${composites.length === 1 ? "grid-cols-1 max-w-xs mx-auto" : composites.length === 2 ? "grid-cols-2" : "grid-cols-3"}`}>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
             {composites.map((comp, i) => {
               const isSelected = selectedCompositeIndices.has(i);
               return (
                 <div
                   key={i}
                   onClick={() => toggleComposite(i)}
-                  className={`relative rounded-xl overflow-hidden border-2 transition-all cursor-pointer group ${
+                  className={`relative rounded-2xl overflow-hidden border-2 transition-all cursor-pointer group shadow-sm hover:shadow-xl ${
                     isSelected
-                      ? "border-primary ring-2 ring-primary/30 scale-[1.02]"
-                      : "border-border/50 hover:border-primary/50"
+                      ? "border-primary ring-4 ring-primary/20 scale-[1.02]"
+                      : "border-border/40 bg-card hover:border-primary/40"
                   }`}
                 >
-                  <img src={comp.url} alt={comp.title} className="w-full rounded-xl" />
-                  <Badge className="absolute top-2 left-2 bg-black/70 text-white border-0 text-[10px] backdrop-blur-sm">
-                    <MapPin className="w-2.5 h-2.5 mr-0.5" /> {comp.title}
-                  </Badge>
+                  <div className="aspect-[9/16] w-full overflow-hidden bg-muted">
+                    <img 
+                      src={comp.url} 
+                      alt={comp.title} 
+                      className="w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" 
+                    />
+                  </div>
+                  
+                  {/* Glass Header */}
+                  <div className="absolute top-0 left-0 right-0 p-3 bg-gradient-to-b from-black/60 to-transparent">
+                    <Badge className="bg-white/20 text-white border-0 text-[10px] backdrop-blur-md px-2 py-0.5 font-medium">
+                      <MapPin className="w-2.5 h-2.5 mr-1 text-primary-foreground/80" /> {comp.title}
+                    </Badge>
+                  </div>
+
+                  {/* Selection Overlay */}
                   {isSelected && (
-                    <div className="absolute top-2 right-2 w-6 h-6 rounded-full bg-primary flex items-center justify-center shadow-lg">
-                      <Check className="w-3.5 h-3.5 text-white" />
+                    <div className="absolute top-3 right-3 w-8 h-8 rounded-full bg-primary flex items-center justify-center shadow-lg animate-in zoom-in-50">
+                      <Check className="w-4 h-4 text-white" />
                     </div>
                   )}
+
+                  {/* Hover Info */}
+                  <div className="absolute bottom-0 left-0 right-0 p-3 bg-gradient-to-t from-black/80 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                    <p className="text-[10px] text-white/90 font-medium">Click to {isSelected ? 'deselect' : 'select'}</p>
+                  </div>
                 </div>
               );
             })}

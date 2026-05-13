@@ -32,6 +32,13 @@ export async function POST(request) {
 
     userId = session.user.id;
 
+    const { resolveUserFromSession } = await import("@/lib/user-resolver");
+    const user = await resolveUserFromSession(request);
+    if (!user) {
+      return NextResponse.json({ error: "User not found. Please sign out and sign in again." }, { status: 404 });
+    }
+    userId = user._id.toString();
+
     const formData = await request.formData();
     const compositeFile = formData.get("compositeImage");
     const script = formData.get("script");
@@ -205,7 +212,7 @@ export async function POST(request) {
               message: "☁️ Saving video to cloud storage...",
             });
 
-            const downloadUrl = `https://generativelanguage.googleapis.com/v1beta/files/${fileId}:download?key=${apiKey}&alt=media`;
+            const downloadUrl = `https://generativelanguage.googleapis.com/v1beta/files/${fileId}?key=${apiKey}&alt=media`;
             const videoResponse = await fetch(downloadUrl);
             if (!videoResponse.ok) throw new Error(`Download failed: ${videoResponse.status}`);
             const videoBytes = Buffer.from(await videoResponse.arrayBuffer());

@@ -6,8 +6,9 @@ import Asset from "@/models/Asset";
 
 export async function GET(request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
+    const { getResolvedUserId } = await import("@/lib/user-resolver");
+    const userId = await getResolvedUserId(request);
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -16,7 +17,7 @@ export async function GET(request) {
 
     await dbConnect();
     
-    const query = { userId: session.user.id };
+    const query = { userId };
     if (type) query.type = type;
 
     const assets = await Asset.find(query).sort({ createdAt: -1 });
@@ -28,8 +29,9 @@ export async function GET(request) {
 
 export async function POST(request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
+    const { getResolvedUserId } = await import("@/lib/user-resolver");
+    const userId = await getResolvedUserId(request);
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -43,7 +45,7 @@ export async function POST(request) {
     await dbConnect();
     
     const asset = await Asset.create({
-      userId: session.user.id,
+      userId,
       name,
       url,
       type,
@@ -58,8 +60,9 @@ export async function POST(request) {
 
 export async function DELETE(request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session || !session.user) {
+    const { getResolvedUserId } = await import("@/lib/user-resolver");
+    const userId = await getResolvedUserId(request);
+    if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
@@ -72,7 +75,7 @@ export async function DELETE(request) {
 
     await dbConnect();
     
-    const asset = await Asset.findOneAndDelete({ _id: id, userId: session.user.id });
+    const asset = await Asset.findOneAndDelete({ _id: id, userId });
     if (!asset) {
       return NextResponse.json({ error: "Asset not found or unauthorized" }, { status: 404 });
     }

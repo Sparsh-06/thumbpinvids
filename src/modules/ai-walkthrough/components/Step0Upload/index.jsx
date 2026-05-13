@@ -10,9 +10,11 @@ import {
   Loader2,
   CheckCircle2,
   ChevronRight,
+  ChevronDown,
   User,
   X,
   Building2,
+  Images,
 } from "lucide-react";
 import { AssetSelector } from "@/components/dashboard/asset-selector";
 import MultiImageUploadBox from "@/modules/ai-walkthrough/components/MultiImageUploadBox";
@@ -28,15 +30,19 @@ export const Step0Upload = ({
   isValid 
 }) => {
   const [lightboxUrl, setLightboxUrl] = useState(null);
+  const [expandedCollection, setExpandedCollection] = useState(null);
 
   const {
     avatarMode,
     setAvatarMode,
-    selectedAvatars, // Changed from selectedAvatar to selectedAvatars
-    setSelectedAvatars, // Changed from setSelectedAvatar to setSelectedAvatars
+    selectedAvatars,
+    setSelectedAvatars,
+    selectedCollectionId,
+    selectCollection,
+    isCollectionSelected,
     uploadedAvatarFile,
-    toggleAvatarSelection,  // Add this
-    clearSelectedAvatars,   // Add this
+    toggleAvatarSelection,
+    clearSelectedAvatars,
     isAvatarSelected, 
     setUploadedAvatarFile,
     avatarPrompt,
@@ -71,20 +77,23 @@ export const Step0Upload = ({
         <div className="h-px flex-1 bg-border" />
       </div>
 
-      {/* Selected Avatars Counter */}
+      {/* Selected Avatar Indicator */}
       {selectedAvatars.length > 0 && (
         <div className="flex items-center justify-between bg-primary/5 rounded-lg px-3 py-2 border border-primary/20">
           <div className="flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 text-primary" />
             <span className="text-sm font-medium">
-              {selectedAvatars.length} avatar{selectedAvatars.length > 1 ? 's' : ''} selected
+              1 avatar selected
+              {selectedAvatars.length > 1 && (
+                <span className="text-xs text-muted-foreground ml-1">({selectedAvatars.length} poses)</span>
+              )}
             </span>
           </div>
           <button
             onClick={clearSelectedAvatars}
             className="text-xs text-muted-foreground hover:text-destructive transition-colors cursor-pointer"
           >
-            Clear all
+            Clear
           </button>
         </div>
       )}
@@ -111,13 +120,13 @@ export const Step0Upload = ({
           })}
         </div>
 
-        {/* Prebuilt Avatars */}
+        {/* Prebuilt Avatars — Collection-based */}
         {avatarMode === "prebuilt" && (
           <div>
             {reAvatarsLoading && (
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-                {Array.from({ length: 6 }).map((_, i) => (
-                  <div key={i} className="aspect-square rounded-xl bg-muted/60 animate-pulse" />
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                {Array.from({ length: 3 }).map((_, i) => (
+                  <div key={i} className="aspect-[3/4] rounded-xl bg-muted/60 animate-pulse" />
                 ))}
               </div>
             )}
@@ -144,45 +153,95 @@ export const Step0Upload = ({
             )}
 
             {!reAvatarsLoading && !reAvatarsError && reAvatars.length > 0 && (
-              <div className="grid grid-cols-3 sm:grid-cols-6 gap-3">
-                {reAvatars.map((av) => {
-                  const isSelected = isAvatarSelected(av);
+              <div className="grid grid-cols-2 sm:grid-cols-3 gap-4">
+                {reAvatars.map((collection) => {
+                  const isSelected = isCollectionSelected(collection.id);
+                  const isExpanded = expandedCollection === collection.id;
+                  
                   return (
-                    <div
-                      key={av.id}
-                      className={`relative aspect-square rounded-xl overflow-hidden border-2 transition-all group cursor-pointer ${
-                        isSelected
-                          ? "border-primary ring-2 ring-primary/30 scale-105"
-                          : "border-border/50 hover:border-primary/50"
-                      }`}
-                      onClick={() => toggleAvatarSelection({ url: av.url, key: av.key, file: null, name: av.name })}
-                    >
-                      <img
-                        src={av.url}
-                        alt={av.name}
-                        className="w-full h-full object-cover"
-                      />
-                      <button
-                        onClick={(e) => { e.stopPropagation(); setLightboxUrl(av.url); }}
-                        className="absolute top-1 right-1 w-5 h-5 bg-black/60 rounded-full items-center justify-center hidden group-hover:flex transition-all cursor-pointer"
-                        title="Expand"
+                    <div key={collection.id} className="group/coll space-y-2">
+                      {/* Collection Card */}
+                      <div
+                        className={`relative rounded-2xl overflow-hidden border-2 transition-all cursor-pointer ${
+                          isSelected
+                            ? "border-primary ring-4 ring-primary/20 scale-[1.02] shadow-xl"
+                            : "border-border/40 hover:border-primary/40 bg-card shadow-sm hover:shadow-md"
+                        }`}
+                        onClick={() => selectCollection(collection)}
                       >
-                        <svg className="w-3 h-3 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2}
-                            d="M4 8V4m0 0h4M4 4l5 5m11-1V4m0 0h-4m4 0l-5 5M4 16v4m0 0h4m-4 0l5-5m11 5l-5-5m5 5v-4m0 4h-4" />
-                        </svg>
-                      </button>
-                      {isSelected && (
-                        <div className="absolute top-1 left-1 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-                          <CheckCircle2 className="w-3 h-3 text-white" />
+                        {/* Cover Image */}
+                        <div className="aspect-[4/5] overflow-hidden">
+                          <img
+                            src={collection.coverImage}
+                            alt={collection.name}
+                            className="w-full h-full object-cover transition-transform duration-500 group-hover/coll:scale-110"
+                          />
                         </div>
-                      )}
-                      <div className="absolute bottom-0 left-0 right-0 bg-black/60 backdrop-blur-sm px-1 py-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
-                        <p className="text-[10px] text-white text-center truncate">{av.name}</p>
+                        
+                        {/* Selection check */}
+                        {isSelected && (
+                          <div className="absolute top-3 left-3 w-7 h-7 rounded-full bg-primary flex items-center justify-center shadow-lg animate-in zoom-in-50">
+                            <CheckCircle2 className="w-4 h-4 text-white" />
+                          </div>
+                        )}
+
+                        {/* Collection Badge */}
+                        <Badge className="absolute top-3 right-3 bg-black/60 text-white border-0 text-[9px] backdrop-blur-md font-bold tracking-wider py-0.5">
+                          COLLECTION
+                        </Badge>
+
+                        {/* Info bar */}
+                        <div className="absolute bottom-0 left-0 right-0 bg-gradient-to-t from-black/90 via-black/50 to-transparent px-3 py-4">
+                          <p className="text-xs text-white font-bold truncate leading-tight mb-1">{collection.name}</p>
+                          <div className="flex items-center justify-between">
+                            <div className="flex items-center gap-1">
+                              <Images className="w-3 h-3 text-white/70" />
+                              <p className="text-[10px] text-white/80 font-medium">
+                                {collection.imageCount} {collection.imageCount === 1 ? "angle" : "angles"}
+                              </p>
+                            </div>
+                            
+                            <button
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setExpandedCollection(isExpanded ? null : collection.id);
+                              }}
+                              className={`w-6 h-6 rounded-full flex items-center justify-center transition-all cursor-pointer ${
+                                isExpanded ? 'bg-primary text-white' : 'bg-white/20 text-white hover:bg-white/40'
+                              }`}
+                            >
+                              <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-300 ${isExpanded ? 'rotate-180' : ''}`} />
+                            </button>
+                          </div>
+                        </div>
+
+                        {isSelected && (
+                          <div className="absolute bottom-0 left-0 right-0 bg-primary px-2 py-1.5 translate-y-full group-hover/coll:translate-y-0 transition-transform">
+                            <p className="text-[10px] text-white text-center font-bold tracking-tight">SELECTED PRESENTER</p>
+                          </div>
+                        )}
                       </div>
-                      {isSelected && (
-                        <div className="absolute bottom-0 left-0 right-0 bg-primary/80 px-1 py-0.5">
-                          <p className="text-[8px] text-white text-center">Selected</p>
+
+                      {/* Expanded poses gallery */}
+                      {isExpanded && collection.imageCount > 1 && (
+                        <div className="grid grid-cols-3 gap-2 p-2 rounded-xl bg-muted/30 border border-border/30 animate-in slide-in-from-top-2 duration-300">
+                          {collection.images.map((img, i) => (
+                            <div
+                              key={i}
+                              className="relative aspect-square rounded-lg overflow-hidden border border-border/30 group/pose cursor-zoom-in"
+                              onClick={(e) => { e.stopPropagation(); setLightboxUrl(img.url); }}
+                            >
+                              <img
+                                src={img.url}
+                                alt={`Pose ${i + 1}`}
+                                className="w-full h-full object-cover transition-transform hover:scale-110"
+                              />
+                              <div className="absolute inset-0 bg-black/0 hover:bg-black/20 transition-colors" />
+                              <Badge className="absolute bottom-1 right-1 bg-black/70 text-white text-[8px] px-1 py-0 border-0 pointer-events-none">
+                                {i === 0 ? "Front" : i === 1 ? "3/4" : "Side"}
+                              </Badge>
+                            </div>
+                          ))}
                         </div>
                       )}
                     </div>
@@ -224,7 +283,6 @@ export const Step0Upload = ({
                       if (file) {
                         setUploadedAvatarFile(file);
                         const newAvatar = { url: URL.createObjectURL(file), file, name: "Custom", key: `upload-${Date.now()}` };
-                        // For upload mode, we allow selecting this as one of the avatars
                         toggleAvatarSelection(newAvatar);
                       }
                     }} 
@@ -347,7 +405,7 @@ export const Step0Upload = ({
         </div>
       </button>
 
-      {/* Next Button - Updated validation */}
+      {/* Next Button */}
       <div className="flex justify-end">
         <Button 
           onClick={onNext} 

@@ -4,18 +4,22 @@ import { dataUrlToFile } from '../../helpers/fileHelpers';
 
 export const useAvatars = () => {
   const [avatarMode, setAvatarMode] = useState("prebuilt");
+  // selectedAvatars now stores all images from the selected collection/avatar
   const [selectedAvatars, setSelectedAvatars] = useState([]);
+  // Track which collection is selected (for prebuilt mode)
+  const [selectedCollectionId, setSelectedCollectionId] = useState(null);
   const [uploadedAvatarFile, setUploadedAvatarFile] = useState(null);
   const [avatarPrompt, setAvatarPrompt] = useState("");
-  const [avatarVariantCount, setAvatarVariantCount] = useState(3); // Changed default to 3
+  const [avatarVariantCount, setAvatarVariantCount] = useState(3);
   const [generatedAvatars, setGeneratedAvatars] = useState([]);
   const [generatingAvatar, setGeneratingAvatar] = useState(false);
+  // reAvatars now stores collections: [{id, name, coverImage, images: [...]}]
   const [reAvatars, setReAvatars] = useState([]);
   const [reAvatarsLoading, setReAvatarsLoading] = useState(false);
   const [reAvatarsError, setReAvatarsError] = useState(null);
   const [lightboxUrl, setLightboxUrl] = useState(null);
 
-  // Fetch RE avatars
+  // Fetch RE avatars (now returns collections)
   useEffect(() => {
     if (avatarMode !== "prebuilt") return;
     let cancelled = false;
@@ -38,7 +42,33 @@ export const useAvatars = () => {
     return () => { cancelled = true; };
   }, [avatarMode]);
 
-  // Helper to toggle avatar selection (max 3)
+  // Select an avatar collection (prebuilt mode) — max 1
+  // All images in the collection become selectedAvatars
+  const selectCollection = (collection) => {
+    if (selectedCollectionId === collection.id) {
+      // Deselect
+      setSelectedCollectionId(null);
+      setSelectedAvatars([]);
+    } else {
+      // Select this collection — all its images become selectedAvatars
+      setSelectedCollectionId(collection.id);
+      const avatarObjects = collection.images.map((img, i) => ({
+        url: img.url,
+        key: img.key,
+        file: null,
+        name: collection.name,
+        angle: i === 0 ? "front" : i === 1 ? "three-quarter" : "side",
+      }));
+      setSelectedAvatars(avatarObjects);
+    }
+  };
+
+  // Check if a collection is selected
+  const isCollectionSelected = (collectionId) => {
+    return selectedCollectionId === collectionId;
+  };
+
+  // Toggle avatar selection for upload/generate modes — max 1 avatar
   const toggleAvatarSelection = (avatar) => {
     setSelectedAvatars(prev => {
       if (!prev) return [avatar];
@@ -48,12 +78,9 @@ export const useAvatars = () => {
       if (isSelected) {
         // Remove avatar
         return prev.filter(a => a?.url !== avatar?.url && a?.key !== avatar?.key);
-      } else if (prev.length < 3) {
-        // Add avatar if less than 3
-        return [...prev, avatar];
       } else {
-        toast.warning("Maximum 3 avatars can be selected");
-        return prev;
+        // Replace with new avatar (max 1 in upload/generate modes)
+        return [avatar];
       }
     });
   };
@@ -61,6 +88,7 @@ export const useAvatars = () => {
   // Clear all selected avatars
   const clearSelectedAvatars = () => {
     setSelectedAvatars([]);
+    setSelectedCollectionId(null);
   };
 
   // Check if an avatar is selected
@@ -101,7 +129,6 @@ export const useAvatars = () => {
   };
 
   const selectAvatarFromGeneration = (av, index) => {
-    // Instead of setting single, toggle selection
     toggleAvatarSelection(av);
   };
 
@@ -110,6 +137,10 @@ export const useAvatars = () => {
     setAvatarMode,
     selectedAvatars,
     setSelectedAvatars,
+    selectedCollectionId,
+    setSelectedCollectionId,
+    selectCollection,
+    isCollectionSelected,
     toggleAvatarSelection,
     clearSelectedAvatars,
     isAvatarSelected,

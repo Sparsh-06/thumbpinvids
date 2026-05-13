@@ -89,7 +89,19 @@ export const useScript = (selectedCompositeArray, propertyBrief) => {
       let generatedScripts = [];
       
       if (data.scripts && Array.isArray(data.scripts)) {
-        generatedScripts = data.scripts;
+        // Batch API returns [{hook, walkthrough, cta, fullScript}, ...] without type/id/title
+        // Normalize: first = short_form, second = long_form
+        generatedScripts = data.scripts.map((s, idx) => ({
+          id: idx,
+          type: idx === 0 ? "short_form" : "long_form",
+          title: idx === 0 ? "Short Video (15-30s)" : "Full Video (45-60s)",
+          duration: idx === 0 ? "short" : "long",
+          hook: (s.hook || "").trim(),
+          walkthrough: (s.walkthrough || "").trim(),
+          cta: (s.cta || "").trim(),
+          fullScript: (s.fullScript || [s.hook, s.walkthrough, s.cta].filter(Boolean).join(" ")).trim(),
+          references: selectedCompositeArray.length,
+        }));
       } else if (data.shortScript && data.longScript) {
         // Handle separate short/long responses
         generatedScripts = [

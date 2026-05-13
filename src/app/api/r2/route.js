@@ -9,10 +9,12 @@ import { s3, BUCKET } from "@/lib/r2";
  */
 export async function GET(request) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.id) {
+    const { resolveUserFromSession } = await import("@/lib/user-resolver");
+    const user = await resolveUserFromSession(request);
+    if (!user) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+    const resolvedUserId = user._id.toString();
 
     const { searchParams } = new URL(request.url);
     const encodedKey = searchParams.get("key");
@@ -24,16 +26,14 @@ export async function GET(request) {
     // CRITICAL FIX: Decode the URL-encoded key
     const key = decodeURIComponent(encodedKey);
     
-    console.log("[R2 Proxy] Encoded key:", encodedKey);
-    console.log("[R2 Proxy] Decoded key:", key);
-    console.log("[R2 Proxy] User ID:", session.user.id);
+    console.log("[R2 Proxy] Request:", { key, userId: resolvedUserId });
 
     // Ownership check
     const isPublic = key.startsWith("Avatars/");
-    const ownedPrefix = `users/${session.user.id}/`;
+    const ownedPrefix = `users/${resolvedUserId}/`;
 
     if (!isPublic && !key.startsWith(ownedPrefix)) {
-      console.log("[R2 Proxy] Forbidden - wrong prefix");
+      console.warn("[R2 Proxy] Forbidden - Ownership check failed:", { key, ownedPrefix });
       return NextResponse.json({ error: "Forbidden" }, { status: 403 });
     }
 

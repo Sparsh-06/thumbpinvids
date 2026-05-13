@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/lib/auth-config";
+import { getResolvedUserId } from "@/lib/user-resolver";
 import Asset from "@/models/Asset";
 import dbConnect from "@/lib/mongodb";
 import { uploadToR2, buildUserKey } from "@/lib/r2-upload";
@@ -15,8 +16,10 @@ import { uploadToR2, buildUserKey } from "@/lib/r2-upload";
 export async function POST(request) {
   try {
     const session = await getServerSession(authOptions);
-    if (!session) {
-      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    // ── User Resolution ──────────────────────────────────────────────────────
+    const userId = await getResolvedUserId(request);
+    if (!userId) {
+      return NextResponse.json({ error: "User resolution failed. Please log in again." }, { status: 401 });
     }
 
     const formData = await request.formData();
@@ -28,7 +31,7 @@ export async function POST(request) {
 
     // ── Upload to R2 ──────────────────────────────────────────────────────────
     const buffer = Buffer.from(await videoFile.arrayBuffer());
-    const key = buildUserKey(session.user.id, "videos", "mp4", "combined-walkthrough");
+    const key = buildUserKey(userId, "videos", "mp4", "combined-walkthrough");
     const videoUrl = await uploadToR2(buffer, key, "video/mp4");
 
     const sizeMB = (buffer.length / 1024 / 1024).toFixed(1);
@@ -37,7 +40,7 @@ export async function POST(request) {
     // ── Create Asset Library entry ────────────────────────────────────────────
     await dbConnect();
     const asset = await Asset.create({
-      userId: session.user.id,
+      userId: userId,
       name: `Combined Walkthrough - ${new Date().toLocaleDateString()}`,
       url: videoUrl,
       type: "clip",

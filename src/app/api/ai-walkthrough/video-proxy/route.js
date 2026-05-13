@@ -11,15 +11,19 @@ export async function GET(request) {
     return new Response("GEMINI_API_KEY is not configured", { status: 500 });
   }
 
+  const { getResolvedUserId } = await import("@/lib/user-resolver");
+  const userId = await getResolvedUserId(request);
+  
   const { searchParams } = new URL(request.url);
-  const fileId = searchParams.get("fileId");
+  let fileId = searchParams.get("fileId");
 
   if (!fileId) {
     return new Response("fileId is required", { status: 400 });
   }
 
-  // Use the rawId for the standard files.get and download paths
-  const rawId = fileId.startsWith("files/") ? fileId.slice(6) : fileId.split(":")[0].split("?")[0];
+  // Clean up fileId (remove :download or other suffixes if present)
+  const rawId = fileId.includes(":") ? fileId.split(":")[0] : fileId;
+  console.log(`[Video Proxy] Request for fileId=${fileId} (rawId=${rawId}) by userId=${userId}`);
   
   try {
     // 1. Check file state first using the REST API (Metadata)

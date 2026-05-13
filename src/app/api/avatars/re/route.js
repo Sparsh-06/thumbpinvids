@@ -2,14 +2,13 @@
  * Public Real-Estate Avatars API — GET /api/avatars/re
  *
  * Returns the list of available real-estate presenter avatars stored
- * in Cloudflare R2 under the Avatars/RE/ prefix. No auth required —
- * these are shown to all logged-in users on the AI Walkthrough page.
+ * in Cloudflare R2 under the Avatars/RE/ prefix, grouped by collection.
+ * No auth required — these are shown to all logged-in users on the AI Walkthrough page.
  *
- * Response: { avatars: [{ id, name, url, key }] }
- * url → /api/admin/r2?key=Avatars/RE/<filename>  (served via admin R2 route)
+ * Response: { avatars: [{ id, name, images: [{url, key, index}], coverImage }] }
  */
 
-import { ListObjectsV2Command } from "@aws-sdk/client-s3";
+import { ListObjectsV2Command, HeadObjectCommand } from "@aws-sdk/client-s3";
 import { NextResponse } from "next/server";
 import { s3, BUCKET } from "@/lib/r2";
 
@@ -24,10 +23,10 @@ function isImage(key) {
 
 export async function GET() {
   try {
-    const avatars = [];
+    const allObjects = [];
     let continuationToken;
-    let index = 1;
 
+    // List all objects under Avatars/RE/
     do {
       const resp = await s3.send(
         new ListObjectsV2Command({
@@ -39,23 +38,91 @@ export async function GET() {
 
       for (const obj of resp.Contents ?? []) {
         if (!isImage(obj.Key)) continue;
-
-        const filename = obj.Key.slice(RE_PREFIX.length); // e.g. "agent1.png"
-        const displayName = filename.replace(/\.[^/.]+$/, ""); // strip extension
-
-        avatars.push({
-          id: `re-${filename}`,
-          name: `RE Agent ${index++}`,
-          displayName,
-          key: obj.Key,
-          // Serve via the admin R2 route which streams directly from R2
-          url: `/api/r2?key=${encodeURIComponent(obj.Key)}`,
-          lastModified: obj.LastModified,
-        });
+        allObjects.push(obj);
       }
 
       continuationToken = resp.IsTruncated ? resp.NextContinuationToken : null;
     } while (continuationToken);
+
+    // Fetch metadata for each object to get collection info
+    const collectionsMap = new Map();
+    const ungrouped = [];
+
+    for (const obj of allObjects) {
+      let collectionId = null;
+      let collectionName = null;
+      let fileIndex = 0;
+
+      try {
+        const headResp = await s3.send(
+          new HeadObjectCommand({ Bucket: BUCKET, Key: obj.Key })
+        );
+        collectionId = headResp.Metadata?.["collection-id"] || null;
+        collectionName = headResp.Metadata?.["collection-name"] || null;
+        fileIndex = parseInt(headResp.Metadata?.["file-index"] || "0");
+      } catch (err) {
+        console.warn(`[RE Avatars] Failed to get metadata for ${obj.Key}:`, err.message);
+      }
+
+      const filename = obj.Key.slice(RE_PREFIX.length);
+      const displayName = filename.replace(/\.[^/.]+$/, "");
+      const imageEntry = {
+        url: `/api/r2?key=${encodeURIComponent(obj.Key)}`,
+        key: obj.Key,
+        index: fileIndex,
+        displayName,
+      };
+
+      if (collectionId) {
+        if (!collectionsMap.has(collectionId)) {
+          collectionsMap.set(collectionId, {
+            id: collectionId,
+            name: collectionName || `RE Agent`,
+            images: [],
+            lastModified: obj.LastModified,
+          });
+        }
+        collectionsMap.get(collectionId).images.push(imageEntry);
+      } else {
+        // Legacy avatar without collection metadata — treat as its own collection
+        ungrouped.push({
+          id: `legacy-${filename}`,
+          name: displayName || "RE Agent",
+          images: [imageEntry],
+          lastModified: obj.LastModified,
+        });
+      }
+    }
+
+    // Build final avatar list — collections first, then ungrouped
+    const avatars = [];
+    let index = 1;
+
+    for (const [, collection] of collectionsMap) {
+      // Sort images within collection by index
+      collection.images.sort((a, b) => a.index - b.index);
+      avatars.push({
+        id: collection.id,
+        name: collection.name || `RE Agent ${index}`,
+        coverImage: collection.images[0]?.url,
+        imageCount: collection.images.length,
+        images: collection.images,
+        lastModified: collection.lastModified,
+      });
+      index++;
+    }
+
+    for (const legacy of ungrouped) {
+      avatars.push({
+        id: legacy.id,
+        name: legacy.name || `RE Agent ${index}`,
+        coverImage: legacy.images[0]?.url,
+        imageCount: legacy.images.length,
+        images: legacy.images,
+        lastModified: legacy.lastModified,
+      });
+      index++;
+    }
 
     return NextResponse.json({ avatars }, { headers: { "Cache-Control": "no-store" } });
   } catch (err) {

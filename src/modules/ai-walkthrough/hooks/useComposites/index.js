@@ -76,9 +76,12 @@ export const useComposites = (propertyImages, selectedAvatars) => {
       }
 
       const results = [];
-      let compositeIndex = 0;
       
-      // Generate composites for each property image with each avatar
+      // Use the FIRST (cover) avatar pose for compositing.
+      // Extra poses in the collection are visual references only — NOT separate composites.
+      const primaryAvatar = avatarFiles[0];
+      
+      // Generate exactly 1 composite per property image
       for (let propIdx = 0; propIdx < propertyImages.length; propIdx++) {
         // Process property image
         let propertyFile = await ensureFileObject(propertyImages[propIdx]);
@@ -88,50 +91,44 @@ export const useComposites = (propertyImages, selectedAvatars) => {
         
         const compressedProperty = await compressImage(propertyFile);
         
-        // For each avatar, create a composite with this property
-        for (let avatarIdx = 0; avatarIdx < avatarFiles.length; avatarIdx++) {
-          const avatar = avatarFiles[avatarIdx];
-          toast.info(`Creating composite ${compositeIndex + 1}/${propertyImages.length * avatarFiles.length}...`, 
-            { id: "composite-progress" }
-          );
-          
-          const fd = new FormData();
-          fd.append("avatarImage", avatar.file);
-          fd.append("propertyImage", compressedProperty);
+        toast.info(`Creating composite ${propIdx + 1}/${propertyImages.length}...`, 
+          { id: "composite-progress" }
+        );
+        
+        const fd = new FormData();
+        fd.append("avatarImage", primaryAvatar.file);
+        fd.append("propertyImage", compressedProperty);
 
-          const res = await fetch("/api/real-estate-video/composite", { 
-            method: "POST", 
-            body: fd 
-          });
-          
-          const contentType = res.headers.get("content-type");
-          let data;
-          if (contentType && contentType.includes("application/json")) {
-            data = await res.json();
-          }
-
-          if (!res.ok) {
-            if (res.status === 413) {
-              throw new Error("The images are too large. Please try smaller files.");
-            }
-            throw new Error(data?.error || `Composite failed with status ${res.status}`);
-          }
-
-          if (!data) {
-            throw new Error("Invalid response from server");
-          }
-
-          results.push({
-            url: data.compositeUrl,
-            file: dataUrlToFile(data.compositeUrl, `composite-${propIdx}-${avatarIdx}.png`),
-            title: `${avatar.name} - Property ${propIdx + 1}`,
-            propertyIndex: propIdx,
-            avatarIndex: avatarIdx,
-            avatarAngle: avatar.angle,
-          });
-          
-          compositeIndex++;
+        const res = await fetch("/api/real-estate-video/composite", { 
+          method: "POST", 
+          body: fd 
+        });
+        
+        const contentType = res.headers.get("content-type");
+        let data;
+        if (contentType && contentType.includes("application/json")) {
+          data = await res.json();
         }
+
+        if (!res.ok) {
+          if (res.status === 413) {
+            throw new Error("The images are too large. Please try smaller files.");
+          }
+          throw new Error(data?.error || `Composite failed with status ${res.status}`);
+        }
+
+        if (!data) {
+          throw new Error("Invalid response from server");
+        }
+
+        results.push({
+          url: data.compositeUrl,
+          file: dataUrlToFile(data.compositeUrl, `composite-${propIdx}.png`),
+          title: `${primaryAvatar.name} - Property ${propIdx + 1}`,
+          propertyIndex: propIdx,
+          avatarIndex: 0,
+          avatarAngle: primaryAvatar.angle,
+        });
       }
 
       setComposites(results);
